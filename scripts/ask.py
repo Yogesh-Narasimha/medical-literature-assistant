@@ -7,7 +7,7 @@ Usage:
 import sys
 
 from src.generation.answer import Answer, answer_question
-from src.retrieval.dense import DenseRetriever
+from src.retrieval.hybrid import default_retriever
 
 
 def show(ans: Answer):
@@ -27,7 +27,7 @@ def show(ans: Answer):
 
 
 def main():
-    retriever = DenseRetriever()
+    retriever = default_retriever()
     if len(sys.argv) > 1:
         show(answer_question(" ".join(sys.argv[1:]), retriever))
         return

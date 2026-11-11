@@ -30,29 +30,40 @@ def is_gold(item: dict, drug: str, section: str) -> bool:
     return item["drug"] == drug and section in item["sections"]
 
 
-def eval_retrieval(ks=(1, 3, 5)):
-    from src.retrieval.dense import DenseRetriever
-    r = DenseRetriever()
-    items = [i for i in load() if i["drug"]]
+def _score_retriever(name, retriever, items, ks):
     ranks = []
     for it in items:
-        hits = r.search(it["q"], max(ks))
-        rank = next((n for n, h in enumerate(hits, 1)
-                     if is_gold(it, h.chunk.get("drug"), h.chunk["section"])), None)
-        ranks.append(rank)
-        print(f"  rank={rank!s:>4}  {it['q']}")
-    print(f"\nRetrieval over {len(items)} in-scope questions")
-    for k in ks:
-        print(f"  Recall@{k}: {sum(1 for x in ranks if x and x <= k) / len(items):.2f}")
-    print(f"  MRR:       {sum(1 / x for x in ranks if x) / len(items):.2f}")
+        hits = retriever.search(it["q"], max(ks))
+        ranks.append(next((n for n, h in enumerate(hits, 1)
+                           if is_gold(it, h.chunk.get("drug"), h.chunk["section"])), None))
+    row = {f"Recall@{k}": sum(1 for x in ranks if x and x <= k) / len(items) for k in ks}
+    row["MRR"] = sum(1 / x for x in ranks if x) / len(items)
+    print(f"  {name:8} " + "  ".join(f"{m}={v:.2f}" for m, v in row.items()))
+    return ranks
 
-    # Out-of-scope: what are the top scores? Helps choose MIN_RELEVANCE.
+
+def eval_retrieval(ks=(1, 3, 5)):
+    from src.retrieval.dense import DenseRetriever
+    from src.retrieval.hybrid import BM25Retriever, HybridRetriever
+    dense = DenseRetriever()
+    retrievers = {"dense": dense, "bm25": BM25Retriever(dense.chunks), "hybrid": HybridRetriever(dense),
+                  "hyb+drug": HybridRetriever(dense, drug_boost=0.01)}
+    items = [i for i in load() if i["drug"]]
+    print(f"Retrieval over {len(items)} in-scope questions")
+    all_ranks = {n: _score_retriever(n, r, items, ks) for n, r in retrievers.items()}
+    print()
+    print("Per question rank (dense / bm25 / hybrid / hybrid+drug-boost):")
+    for i, it in enumerate(items):
+        print("  " + " / ".join(f"{all_ranks[n][i]!s:>4}" for n in retrievers) + f"   {it['q']}")
+
+    # Out-of-scope: top dense scores help choose MIN_RELEVANCE.
     oos = [i for i in load() if not i["drug"]]
-    print(f"\nOut-of-scope top-1 scores (MIN_RELEVANCE currently {MIN_RELEVANCE}):")
+    print()
+    print(f"Out-of-scope top-1 dense scores (MIN_RELEVANCE currently {MIN_RELEVANCE}):")
     for it in oos:
-        print(f"  {r.search(it['q'], 1)[0].score:.3f}  {it['q']}")
-    inscope = [r.search(i["q"], 1)[0].score for i in items]
-    print(f"In-scope top-1 score: min {min(inscope):.3f}, mean {sum(inscope) / len(inscope):.3f}")
+        print(f"  {dense.search(it['q'], 1)[0].score:.3f}  {it['q']}")
+    inscope = [dense.search(i["q"], 1)[0].score for i in items]
+    print(f"In-scope top-1 dense score: min {min(inscope):.3f}, mean {sum(inscope) / len(inscope):.3f}")
 
 
 def eval_agent():

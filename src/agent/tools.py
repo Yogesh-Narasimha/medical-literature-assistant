@@ -8,15 +8,15 @@ import re
 from functools import lru_cache
 
 from src.config import LABEL_SECTIONS, LABEL_SNIPPET_CHARS, RAW_DIR
-from src.retrieval.dense import DenseRetriever
+from src.retrieval.hybrid import HybridRetriever, default_retriever
 
-_retriever: DenseRetriever | None = None
+_retriever: HybridRetriever | None = None
 
 
-def get_retriever() -> DenseRetriever:
+def get_retriever() -> HybridRetriever:
     global _retriever
     if _retriever is None:
-        _retriever = DenseRetriever()
+        _retriever = default_retriever()
     return _retriever
 
 

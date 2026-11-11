@@ -43,7 +43,7 @@ def build_context(hits: list[Hit]) -> str:
 
 def answer_question(question: str, retriever: DenseRetriever, k: int = TOP_K) -> Answer:
     hits = retriever.search(question, k)
-    if not hits or hits[0].score < MIN_RELEVANCE:
+    if not hits or max(h.score for h in hits) < MIN_RELEVANCE:
         return Answer(question, NOT_FOUND, hits, answered=False)
 
     resp = _client.chat(
