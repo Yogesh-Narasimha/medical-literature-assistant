@@ -121,9 +121,9 @@ TOOL_SCHEMAS = [
             "required": ["drug_a", "drug_b"]}}},
     {"type": "function", "function": {
         "name": "lookup_drug_label",
-        "description": "Fetch one exact section of one drug's FDA label. Use for drug interactions, dosing, "
-                       "contraindications or boxed warnings of a NAMED drug. For an interaction between two "
-                       "drugs, call it once per drug.",
+        "description": "Fetch one exact section of one drug's FDA label. Use ONLY for boxed warning, dosage, "
+                       "contraindications or the interactions list of a NAMED drug. Not for side effects, "
+                       "mechanisms, indications or general questions: use search_documents for those.",
         "parameters": {"type": "object", "properties": {
             "drug": {"type": "string", "description": "Generic drug name, e.g. warfarin"},
             "section": {"type": "string", "enum": LABEL_SECTIONS, "description": "Label section"}},

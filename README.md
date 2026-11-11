@@ -67,18 +67,20 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 | Metric | Score |
 |---|---|
 | Retrieval Recall@1 / @3 / @5 | 0.50 / 0.75 / 0.75 (MRR 0.61) |
-| Answers with citations | 0.94 |
-| Answers citing a gold source | 0.88 |
-| All citations valid | 0.81 |
+| Answers with citations | 1.00 |
+| Answers citing a gold source | 0.81 |
+| All citations valid | 0.88 |
 | Out-of-scope refusal | 1.00 (3/3) |
-| Tool routing vs. gold | 0.50 |
+| Tool routing vs. gold | 0.88 |
 
-Honest reading: the 3B model almost always picks `lookup_drug_label` and never `search_documents`, so
-PubMed abstracts are barely used and routing disagrees with my gold labels on half the questions. Pure
-dense retrieval also misses some drug-specific questions (warfarin interactions, ciprofloxacin). These
-are the targets for hybrid search + reranking and a stronger model. The refusal threshold (0.65) sits in
-the measured gap between out-of-scope (max 0.57) and in-scope (min 0.75) top-1 scores. Each agent
-answer takes 1-2 minutes on a laptop CPU.
+Honest reading: with the first version of the tool descriptions the 3B model always picked
+`lookup_drug_label` and never `search_documents` (routing 0.50, PubMed unused). Rewriting the prompt so
+that label lookup is only for named sections raised routing to 0.88 and citations to 1.00, but
+"cites a gold source" dropped from 0.88 to 0.81 because "what drugs interact with X" now goes to dense
+search, which misses some labels (warfarin interactions, ciprofloxacin). That points at hybrid search +
+reranking as the next improvement. The refusal threshold (0.65) sits in the measured gap between
+out-of-scope (max 0.57) and in-scope (min 0.75) top-1 scores. Each agent answer takes 1-2 minutes on a
+laptop CPU.
 
 ## Project structure
 
