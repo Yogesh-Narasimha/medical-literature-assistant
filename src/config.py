@@ -58,3 +58,13 @@ PUBMED_QUERIES = [
     "proton pump inhibitor long-term risks",
 ]
 PUBMED_PER_QUERY = 20
+
+# ---- Generation (Day 2) ----
+# If the best retrieved chunk scores below this cosine similarity, we refuse
+# to answer instead of letting the model guess. Tune it with the Day 4 eval.
+MIN_RELEVANCE = 0.65
+LLM_TEMPERATURE = 0.0
+
+# ---- Agent (Day 3) ----
+AGENT_MAX_STEPS = 4          # max think->act->observe rounds before forcing an answer
+LABEL_SNIPPET_CHARS = 2500   # how much of a label section the lookup tool returns

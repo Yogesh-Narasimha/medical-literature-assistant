@@ -1,9 +1,8 @@
-# Evaluation (Day 4)
+# Evaluation
 
-`eval/questions.jsonl` will hold hand-checked questions, one per line:
+`questions.jsonl` holds hand-written questions with a gold drug and acceptable label sections (`drug: null` = out of scope, should be refused).
 
-```json
-{"id": "q001", "question": "Can ibuprofen be taken with warfarin?", "relevant_doc_ids": ["fda:<set_id>"], "relevant_sections": ["drug_interactions"]}
+```bash
+python -m eval.run_eval retrieval   # Recall@k, MRR, score distribution
+python -m eval.run_eval agent       # tool routing, citations, refusals
 ```
-
-Metrics planned: Recall@k and MRR for retrieval, faithfulness and answer relevance for generated answers.

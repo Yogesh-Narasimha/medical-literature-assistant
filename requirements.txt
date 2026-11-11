@@ -3,3 +3,7 @@ tqdm>=4.66
 numpy>=1.26
 faiss-cpu>=1.8
 ollama>=0.4
+langgraph>=0.2
+fastapi>=0.110
+uvicorn>=0.29
+streamlit>=1.35

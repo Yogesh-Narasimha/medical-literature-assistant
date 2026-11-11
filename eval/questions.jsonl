@@ -1,0 +1,19 @@
+{"q": "What are the side effects of metformin?", "drug": "metformin", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "What is the boxed warning for metformin?", "drug": "metformin", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "Can I take ibuprofen with warfarin?", "drug": "warfarin", "sections": ["drug_interactions"], "tool": "lookup_drug_label"}
+{"q": "What drugs interact with warfarin?", "drug": "warfarin", "sections": ["drug_interactions"], "tool": "lookup_drug_label"}
+{"q": "What are the contraindications of lisinopril?", "drug": "lisinopril", "sections": ["contraindications"], "tool": "lookup_drug_label"}
+{"q": "What is the recommended dosage of amoxicillin?", "drug": "amoxicillin", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "How does atorvastatin work?", "drug": "atorvastatin", "sections": ["mechanism_of_action"], "tool": "search_documents"}
+{"q": "What is the boxed warning for fluoxetine?", "drug": "fluoxetine", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What are common adverse reactions of sertraline?", "drug": "sertraline", "sections": ["adverse_reactions"], "tool": "search_documents"}
+{"q": "What is apixaban indicated for?", "drug": "apixaban", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "Which drugs interact with clopidogrel?", "drug": "clopidogrel", "sections": ["drug_interactions"], "tool": "lookup_drug_label"}
+{"q": "Is ciprofloxacin associated with tendon rupture?", "drug": "ciprofloxacin", "sections": ["boxed_warning", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "What are the warnings for tramadol?", "drug": "tramadol", "sections": ["boxed_warning", "warnings_and_cautions", "warnings"], "tool": "lookup_drug_label"}
+{"q": "What is the use of levothyroxine?", "drug": "levothyroxine", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "Can empagliflozin be used in patients with kidney problems?", "drug": "empagliflozin", "sections": ["use_in_specific_populations", "dosage_and_administration", "warnings_and_cautions", "contraindications"], "tool": "search_documents"}
+{"q": "What are the risks of long-term proton pump inhibitor use?", "drug": "omeprazole", "sections": ["warnings_and_cautions", "warnings", "adverse_reactions"], "tool": "search_documents"}
+{"q": "Who won the 2018 football world cup?", "drug": null, "sections": [], "tool": null}
+{"q": "What is the best pizza topping?", "drug": null, "sections": [], "tool": null}
+{"q": "How do I fix a flat bicycle tire?", "drug": null, "sections": [], "tool": null}
