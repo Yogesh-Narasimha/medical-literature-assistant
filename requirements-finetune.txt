@@ -1,0 +1,6 @@
+# Optional: embedding fine-tuning (src/finetune). Needs an NVIDIA GPU; torch is installed separately:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# transformers is pinned to match torch 2.5.1 (transformers 5.x needs a newer torch).
+transformers==4.46.3
+sentence-transformers==3.3.1
+huggingface-hub<1.0

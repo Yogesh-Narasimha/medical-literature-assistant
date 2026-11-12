@@ -111,6 +111,33 @@ Known weak spots: ciprofloxacin and PPI risk questions still miss under the stri
 openFDA returned is short and has no boxed warning); "what painkiller is safest for a stomach ulcer" retrieves
 nothing gold; some answers still carry an invalid `[n]` (flagged in the CLI, API and UI).
 
+### Embedding fine-tuning experiment (`src/finetune/`, needs a GPU; RTX 3050 6 GB used here)
+
+Goal: does fine-tuning a small embedding model on this domain beat the off-the-shelf one?
+
+1. `make_pairs.py`: qwen2.5:3b writes 2 questions per chunk (3,345 questions over 1,731 chunks). The train/test
+   split is by *document*, so no passage from a held-out document is seen in training (423 held-out questions).
+2. `train.py`: BAAI/bge-small-en-v1.5 (33M params), in-batch-negatives contrastive loss, 3 epochs, batch 32,
+   fp16. Training takes under a minute.
+3. `eval_embed.py`: all models search the same 1,837-chunk corpus with dense search only.
+
+| Model | Held-out synthetic R@5 / MRR | Hand-written strict R@5 / MRR | Hand-written relaxed R@5 / MRR |
+|---|---|---|---|
+| nomic-embed-text (used) | 0.816 / 0.640 | 0.737 / 0.646 | 0.895 / 0.821 |
+| bge-small, untuned | 0.816 / 0.648 | 0.684 / 0.544 | 0.789 / 0.728 |
+| bge-small, fine-tuned on long questions | 0.872 / 0.687 | 0.684 / 0.481 | 0.842 / 0.667 |
+| bge-small, fine-tuned on long + short questions | 0.851 / 0.681 | 0.684 / 0.537 | 0.842 / 0.731 |
+
+What happened, honestly: the first fine-tune (long, detailed synthetic questions) improved the held-out
+synthetic questions but made the hand-written questions *worse* (strict R@1 0.47 -> 0.32): it learned the
+style of the synthetic questions. A second attempt, made after seeing that result, added short search-box
+style questions to the training data and recovered the hand-written score to the untuned level while keeping
+most of the synthetic gain. Even so, **no fine-tuned model beats nomic-embed-text on the hand-written
+questions, so the pipeline keeps nomic.** The hand-written set is only 19 questions (one question is about
+0.05), the second attempt was chosen after seeing test results, and training questions are LLM-generated, so
+these results are indicative, not conclusive. Likely next steps: hard-negative mining, more and
+cleaner training questions, or fine-tuning a larger base model.
+
 ## Project structure
 
 ```
@@ -121,6 +148,7 @@ src/
   retrieval/             embedder, dense retriever, BM25 + hybrid retriever, corrective RAG
   generation/            plain RAG answer with citations
   agent/                 LangGraph ReAct agent and its tools
+  finetune/              synthetic pairs, contrastive fine-tuning, embedding comparison
   api.py                 FastAPI backend
 app.py                   Streamlit UI
 scripts/                 command-line search, ask, agent
@@ -134,7 +162,7 @@ eval/                    questions.jsonl + run_eval.py
 - [x] Day 3: LangGraph ReAct agent with document-search and drug-label tools
 - [x] Day 4: evaluation harness (Recall@k, MRR, tool routing, citation validity, refusals)
 - [x] Day 5: hybrid search (BM25 + dense, RRF) with a drug-aware rerank, measured (cross-encoder still open)
-- [ ] Days 6–7: fine-tuned biomedical embedding model, measured
+- [x] Days 6–7: embedding fine-tuning experiment, measured (did not beat nomic-embed-text; see results)
 - [x] Day 8 (part): corrective RAG (grade, rewrite, refuse), Streamlit UI
 - [ ] Day 8 (rest): LangFuse tracing
 
