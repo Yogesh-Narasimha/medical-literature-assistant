@@ -360,3 +360,87 @@ def test_normalize_drug_handles_missing_and_and_misspellings(tools, monkeypatch)
     assert tools.normalize_drug("ibuprofin") == "ibuprofen"                    # close spelling
     assert tools.normalize_drug("lithium") == "lithium"                        # genuinely unknown stays unknown
     assert tools.normalize_drug("blood thinner") == "blood thinner"            # classes are left alone
+
+
+def test_named_covered_drug_makes_a_low_cosine_one_word_query_correct():
+    """'cetirizine' as a one-word query scores low on cosine but names a drug whose chunk was retrieved."""
+    class Retr:
+        _query_drugs = staticmethod(lambda q: {"cetirizine"} if "cetirizine" in q else set())
+
+        def __init__(self, hits):
+            self.hits = hits
+
+        def search(self, q, k):
+            return self.hits
+
+    own = [Hit(0.55, chunk("c#s#0", "cetirizine relieves allergy symptoms", drug="cetirizine"))]
+    hits, corr = corrective.corrective_search("cetirizine", Retr(own))
+    assert hits and corr.grade_before == "correct"
+    other = [Hit(0.55, chunk("d#s#0", "unrelated warfarin text", drug="warfarin"))]
+    hits, corr = corrective.corrective_search("cetirizine", Retr(other))     # named drug absent from the hits
+    assert hits == [] and corr.grade_before == "incorrect"
+    off_topic = corrective.corrective_search("how tall is everest", Retr(other))
+    assert off_topic[0] == []                                                # no drug named: still refused
+
+
+def test_reranker_passage_carries_its_drug_name_and_section():
+    from src.retrieval.rerank import RerankedRetriever, passage_for_reranking
+    otc = chunk("c#indications_and_usage#0", "Uses temporarily relieves hay fever symptoms", drug="cetirizine",
+                section="indications_and_usage", title="FDA label: cetirizine")
+    text = passage_for_reranking(otc)
+    assert "cetirizine" in text and "indications and usage" in text and "hay fever" in text
+
+    seen = []
+
+    class Spy:
+        def predict(self, pairs, show_progress_bar=False):
+            seen.extend(t for _, t in pairs)
+            return [1.0] * len(pairs)
+
+    class Base:
+        def search(self, q, k):
+            return [Hit(0.0, otc)]
+
+    rr = RerankedRetriever(Base())
+    rr._model = Spy()
+    rr.search("What is cetirizine for?", 1)
+    assert "cetirizine" in seen[0]          # the cross-encoder is given the drug name, not just the body text
+
+
+def test_rewrite_that_adds_a_drug_is_discarded(monkeypatch):
+    """'symptoms of the flu' -> 'acetaminophen flu symptoms' must not retrieve acetaminophen's label."""
+    class Retr:
+        def __init__(self):
+            self.queries = []
+
+        _query_drugs = staticmethod(lambda q: {"acetaminophen"} if "acetaminophen" in q.lower() else set())
+
+        def search(self, q, k):
+            self.queries.append(q)
+            return [Hit(0.68, chunk("a#s#0", "relieves flu aches", drug="acetaminophen"))]
+
+    monkeypatch.setattr(corrective, "rewrite_query", lambda q: "acetaminophen flu symptoms")
+    r = Retr()
+    hits, corr = corrective.corrective_search("symptoms of the flu", r, implied=lambda text: set())
+    assert hits == [] and corr.rejected_drugs == ["acetaminophen"] and "never mentioned" in corr.note()
+    assert r.queries == ["symptoms of the flu"]                      # the rewritten query was never searched
+
+
+def test_rewrite_may_swap_a_lay_name_for_the_generic_drug(monkeypatch):
+    class Retr:
+        _query_drugs = staticmethod(lambda q: {"acetaminophen"} if "acetaminophen" in q.lower() else set())
+
+        def search(self, q, k):
+            score = 0.80 if "acetaminophen" in q else 0.68
+            return [Hit(score, chunk("a#s#0", "x", drug="acetaminophen"))]
+
+    monkeypatch.setattr(corrective, "rewrite_query", lambda q: "acetaminophen safety with anticoagulant")
+    hits, corr = corrective.corrective_search("is tylenol ok with a blood thinner", Retr(),
+                                              implied=lambda text: {"acetaminophen", "warfarin"})
+    assert hits and corr.rejected_drugs is None                      # 'tylenol' implies acetaminophen: allowed
+
+
+def test_implied_drugs_covers_brands_synonyms_and_classes(tools):
+    assert tools.implied_drugs("Is Tylenol ok with a blood thinner?") >= {"acetaminophen", "warfarin"}
+    assert tools.implied_drugs("symptoms of the flu") == set()
+    assert tools.implied_drugs("warfarin and ibuprofen") == {"warfarin", "ibuprofen"}

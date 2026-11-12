@@ -11,7 +11,7 @@ INDEX_DIR = DATA_DIR / "index"
 
 # ---- Models (served locally by Ollama) ----
 EMBED_MODEL = "nomic-embed-text"
-LLM_MODEL = "qwen2.5:3b"          # used from Day 2 onwards
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5:3b")   # override to compare models, e.g. LLM_MODEL=qwen2.5:7b
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")   # overridden in Docker
 
 # ---- Chunking (in words; ~1.3 tokens per word) ----
@@ -65,6 +65,8 @@ PUBMED_PER_QUERY = 20
 # to answer instead of letting the model guess. Tune it with the Day 4 eval.
 MIN_RELEVANCE = 0.65
 LLM_TEMPERATURE = 0.0
+MAX_NEW_TOKENS = 700      # hard cap on every answer: an unbounded small model once looped for 44,000 tokens (10 minutes)
+LLM_OPTIONS = {"temperature": LLM_TEMPERATURE, "num_predict": MAX_NEW_TOKENS}
 
 # ---- Agent (Day 3) ----
 AGENT_MAX_STEPS = 4          # max think->act->observe rounds before forcing an answer

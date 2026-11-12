@@ -77,7 +77,7 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 41 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
+python -m pytest -q          # 46 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
                              # citation checks, coverage check, drug-name matching, tracing, train/test split)
 ```
 
@@ -97,11 +97,14 @@ point. The commands to pull models and build the index are in the compose file h
 
 ## Results
 
-Setup: qwen2.5:3b + nomic-embed-text, 1,837 chunks, **43 in-scope + 7 out-of-scope hand-written questions**
-(`eval/questions.jsonl`; the out-of-scope set includes two medical questions about drugs that are not in the
-index, lithium and adalimumab). With 43 questions one question is about 0.02-0.03, so treat differences of
-one or two questions as noise; the LLM also varies slightly between runs. *Strict* counts only the expected FDA
-label section; *relaxed* also counts a PubMed abstract on the topic (only 4 questions carry topic keywords).
+Setup: qwen2.5:3b + nomic-embed-text, 1,837 chunks. **Question set 1** (`eval/questions.jsonl`): 43 in-scope + 7
+out-of-scope hand-written questions; the out-of-scope set includes two medical questions about drugs that are
+not in the index (lithium, adalimumab). **Question set 2** (`eval/questions_set2.jsonl`): 16 + 3 questions about
+other drugs, written later and evaluated once before I changed anything. Both sets were written by me, not by an
+independent person, and I fixed bugs that set 2 exposed, so only set 2's first run is a clean held-out result
+(below). With these sizes one question is about 0.02-0.06, so treat differences of one or two questions as noise;
+the LLM also varies slightly between runs. *Strict* counts only the expected FDA label section; *relaxed* also
+counts a PubMed abstract on the topic (only 4 questions carry topic keywords).
 
 ### Retrieval (`python -m eval.run_eval retrieval`)
 
@@ -112,42 +115,64 @@ label section; *relaxed* also counts a PubMed abstract on the topic (only 4 ques
 | Hybrid (BM25 + dense, RRF) | 0.56 / 0.65 | 0.84 / 0.91 | 0.67 / 0.76 |
 | Hybrid + drug-aware boost | 0.70 / 0.74 | 0.86 / 0.91 | 0.76 / 0.81 |
 | + corrective RAG | 0.70 / 0.74 | 0.86 / 0.91 | 0.76 / 0.81 |
-| Hybrid + cross-encoder rerank | 0.67 / 0.77 | 0.84 / 0.91 | 0.75 / 0.83 |
-| **Hybrid + drug boost + cross-encoder (used)** | **0.74 / 0.84** | 0.84 / 0.91 | **0.78 / 0.87** |
+| Hybrid + cross-encoder rerank | 0.74 / 0.81 | 0.84 / 0.91 | 0.78 / 0.86 |
+| **Hybrid + drug boost + cross-encoder (used)** | **0.77 / 0.84** | **0.86 / 0.93** | **0.81 / 0.88** |
 
 - Plain hybrid raised Recall@5 but hurt the top result; boosting chunks of any drug named in the query fixed
   that. The cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`, top 20 candidates, GPU) adds a smaller,
-  consistent gain on top: about 2 questions at rank 1 under strict gold, 4 under relaxed.
+  consistent gain on top. It reads each passage prefixed with its title and section ("FDA label: cetirizine
+  (indications and usage): ..."): OTC labels often never name the drug (the cetirizine label does not contain the
+  word "cetirizine"), and without the prefix the reranker buried the drug's own chunks. That change moved the
+  final configuration from MRR 0.78 to 0.81 (strict).
 - Caveats: the gold labels are defined by drug, so the drug boost is partly aligned with what the metric
-  rewards. The cross-encoder is a general web-search model, not a medical one, and it loses one question the
-  boost alone got right ("what drugs interact with warfarin": it prefers a PubMed overview abstract, which
-  only the relaxed gold accepts). Corrective RAG does not change retrieval metrics because most questions grade
-  as "correct" and never trigger a rewrite; it matters for lay wording and refusals.
+  rewards. The cross-encoder is a general web-search model, not a medical one. Corrective RAG does not change
+  retrieval metrics because most questions grade as "correct" and never trigger a rewrite; it matters for lay
+  wording and refusals.
 - The reranker is switched by `USE_RERANKER` in `src/config.py` and falls back silently if PyTorch is missing.
 
-### Agent (`python -m eval.run_eval agent`)
+### Agent (`python -m eval.run_eval agent [--questions eval/questions_set2.jsonl]`)
 
-| Metric | Score |
-|---|---|
-| Tool routing vs. gold (43 in-scope) | 0.95 |
-| Answers with citations | 1.00 |
-| All citations valid | 1.00 |
-| Answers citing a gold source | 0.95 |
-| Out-of-scope refusal (7) | 1.00 |
+qwen2.5:3b (the default), final code:
 
-From the run traces of that eval (50 runs, RTX 3050 laptop GPU): median latency 4.8 s, p95 12.5 s, about
-1.9 LLM calls and 2,200 tokens per question, 4% of runs triggered a corrective query rewrite, and 13 of 50
-runs had at least one statement flagged as uncited. That flag is a heuristic (a citation at the start or end
-of a paragraph covers it) and still fires on benign conclusion sentences, so read it as "check this", not
-"this is wrong". An earlier run of the same eval had one in-scope answer without a citation (the model wrote
-"sacubitril valsartan" without "and" and the lookup failed); fuzzy drug-name matching fixed it and this table
-is from a full re-run after that fix. The LLM is not perfectly repeatable between runs (GPU arithmetic), so a
-difference of one question between two runs is noise.
+| Metric | Set 1 (43 + 7) | Set 2 (16 + 3, after fixes) |
+|---|---|---|
+| Tool routing vs. gold | 0.95 | 1.00 |
+| Answers with citations | 1.00 | 0.94 |
+| All citations valid | 1.00 | 0.94 |
+| Answers citing a gold source | 0.95 | 0.88 |
+| Out-of-scope refusal | 7/7 | 3/3 |
+| Median / p95 latency (RTX 3050 laptop GPU) | 4.3 s / 13.8 s | 5.0 s / 22.2 s |
 
-How it got here: with the first tool descriptions the 3B model always picked `lookup_drug_label` and never
-`search_documents` (routing 0.50, PubMed unused); rewriting the prompt raised routing to 0.88. Adding hybrid
-retrieval, the guardrails below and a larger question set moved the numbers to the table above. Each step was
-re-measured; earlier smaller question sets gave slightly different numbers.
+Set 2's *first* run, before any change, scored routing 1.00, citations 0.94, gold source 0.88 and 3/3 refusals, so
+the headline numbers did not move after the fixes, but the questions that failed did. That run exposed three bugs
+that are fixed and unit-tested: a one-word query ("cetirizine") was refused because short queries score low on
+cosine (now a query that names a covered drug counts as relevant); the reranker buried drugs whose label never
+names them (above); and one question made the model generate about 44,000 tokens over 10 minutes (every LLM call
+now has a 700-token cap). A later run also showed the query rewriter turning "symptoms of the flu" into
+"acetaminophen flu symptoms" and answering from that label; a rewrite may no longer add a drug the question did not
+name or imply. Remaining miss on set 2: "what side effects can escitalopram have?" is answered without citations
+even after the repair pass (flagged as unverified in the output).
+
+The "uncited statement" flag is a heuristic (a citation at the start or end of a paragraph covers it); it fires in
+roughly a quarter of runs, still catches benign conclusion sentences, and should be read as "check this", not "this
+is wrong". Earlier versions of this README reported different numbers on smaller question sets; each step was
+re-measured, and the LLM is not perfectly repeatable between runs.
+
+#### Does a bigger model help? qwen2.5:3b vs qwen2.5:7b (same code, same questions)
+
+| | 3B set 1 | 7B set 1 | 3B set 2 | 7B set 2 |
+|---|---|---|---|---|
+| Tool routing | 0.95 | 0.93 | 1.00 | 0.94 |
+| Citations / all valid | 1.00 / 1.00 | 1.00 / 1.00 | 0.94 / 0.94 | 1.00 / 1.00 |
+| Cites a gold source | 0.95 | 0.91 | 0.88 | 0.88 |
+| Refusals | 7/7 | 7/7 | 3/3 | 3/3 |
+| Median / p95 latency | 4.3 s / 13.8 s | 11.7 s / 33.5 s | 5.0 s / 22.2 s | 13.4 s / 28.6 s |
+| Runs with flagged uncited statements | 11 / 50 | 20 / 50 | 5 / 19 | 10 / 19 |
+
+Not adopted. The 7B model fixed the one missing citation on set 2 but was no better on routing or gold sources
+(one question lower on set 1), about 2.7x slower (the 5.2 GB model does not fit a 6 GB GPU: 18% of it ran on the
+CPU) and flagged about twice as many uncited statements (I did not investigate why). With a larger GPU or a hosted
+model the answer might differ; switch with `LLM_MODEL=qwen2.5:7b`.
 
 ### Guardrails added after manual testing
 
@@ -155,6 +180,11 @@ Running varied questions by hand (not just the eval set) exposed failures the me
 agent now has these safeguards, each with unit tests:
 
 - **No sources, no answer:** if nothing was retrieved the answer is "not found", never the model's memory.
+- **Output cap:** every LLM call is limited to 700 new tokens; an uncapped small model once looped for 44,000
+  tokens (10 minutes) on a single question.
+- **Rewrite guard:** the corrective-RAG query rewriter may improve wording but may not add a drug the question did
+  not name or imply (via brand names, lay names or drug classes); otherwise the rewrite is discarded and the
+  question is refused.
 - **Coverage check:** an LLM call extracts the drug names in the question; if none of them is in the index,
   the system refuses and names the missing drug. Without it, "side effects of lithium" was answered from other
   drugs' interaction sections that merely mention lithium (a confident answer to a different question). A

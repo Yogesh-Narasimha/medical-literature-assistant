@@ -35,18 +35,39 @@ class Correction:
     grade_before: str
     rewritten: str | None = None
     grade_after: str | None = None
+    rejected_drugs: list[str] | None = None
 
     def note(self) -> str:
+        if self.rejected_drugs:
+            return (f"retrieval was {self.grade_before}; the rewrite '{self.rewritten}' added "
+                    f"{', '.join(self.rejected_drugs)}, which the question never mentioned, so it was discarded")
         if self.rewritten is None:
             return "retrieval was incorrect (nothing close to the question); not rewriting" if self.grade_before == "incorrect" else ""
         return f"retrieval was {self.grade_before}; query rewritten to '{self.rewritten}' -> {self.grade_after}"
 
 
-def grade(hits: list[Hit]) -> str:
+def grade(hits: list[Hit], named_drugs: set[str] | None = None) -> str:
+    """correct / ambiguous / incorrect.
+
+    The cosine score alone is brittle: a one-word query ("cetirizine") scores low against even the right
+    chunks, because the question-shaped queries the thresholds were calibrated on carry more words. So if
+    the query names a drug that the index covers AND a hit really is that drug's chunk, that is strong
+    evidence of relevance and the retrieval is "correct" whatever the cosine says."""
+    if named_drugs and any((h.chunk.get("drug") or "").lower() in named_drugs for h in hits):
+        return "correct"
     best = max((h.score for h in hits), default=0.0)
     if best >= CORRECT_SCORE:
         return "correct"
     return "ambiguous" if best >= MIN_RELEVANCE else "incorrect"
+
+
+def named_drugs(retriever, query: str) -> set[str]:
+    """Drugs from the index that the query names (found through the retriever stack: rerank -> hybrid)."""
+    r = retriever
+    while hasattr(r, "base"):
+        r = r.base
+    finder = getattr(r, "_query_drugs", None)
+    return finder(query) if finder else set()
 
 
 def rewrite_query(question: str) -> str:
@@ -68,9 +89,14 @@ def _merge(a: list[Hit], b: list[Hit], k: int) -> list[Hit]:
     return merged[:k]
 
 
-def corrective_search(question: str, retriever, k: int = TOP_K) -> tuple[list[Hit], Correction]:
+def corrective_search(question: str, retriever, k: int = TOP_K,
+                      implied=None) -> tuple[list[Hit], Correction]:
+    """`implied(text)` (optional) returns the generic drugs a text names or implies through brand names,
+    lay names and drug classes. A rewrite may use better wording but must not ADD a drug the question did
+    not name or imply."""
     hits = retriever.search(question, k)
-    g = grade(hits)
+    named = named_drugs(retriever, question)
+    g = grade(hits, named)
     corr = Correction(grade_before=g)
     if g == "correct":
         return hits, corr
@@ -80,9 +106,17 @@ def corrective_search(question: str, retriever, k: int = TOP_K) -> tuple[list[Hi
         corr.grade_after = "incorrect"
         return [], corr
     corr.rewritten = rewrite_query(question)
+    if implied is not None:
+        added = named_drugs(retriever, corr.rewritten) - (named | implied(question))
+        if added:
+            # "symptoms of the flu" became "acetaminophen flu symptoms": the rewrite invented a drug and
+            # retrieved that drug's label for a question that never asked about it. Discard it and refuse.
+            corr.rejected_drugs = sorted(added)
+            corr.grade_after = "incorrect"
+            return [], corr
     if corr.rewritten.lower() != question.lower():
         hits = _merge(hits, retriever.search(corr.rewritten, k), k)
-    corr.grade_after = grade(hits)
+    corr.grade_after = grade(hits, named | named_drugs(retriever, corr.rewritten))
     if corr.grade_after == "incorrect":
         return [], corr          # nothing relevant: let the agent say so instead of guessing
     return hits, corr

@@ -17,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agent.coverage import missing_subject
 from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS
 from src.citations import has_citation, parse_citations, strip_invalid, strip_markers, uncited_sentences
-from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_TEMPERATURE, OLLAMA_HOST
+from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_OPTIONS, OLLAMA_HOST
 from src.tracing import log_trace
 
 NOT_FOUND = "I could not find this in the indexed documents."
@@ -58,7 +58,7 @@ def agent_node(state: State) -> dict:
         model=LLM_MODEL,
         messages=state["messages"],
         tools=None if force_answer else TOOL_SCHEMAS,
-        options={"temperature": LLM_TEMPERATURE},
+        options=LLM_OPTIONS,
     )
     llm_ms = (time.perf_counter() - t0) * 1000
     msg = resp["message"]
@@ -115,7 +115,7 @@ def _add_citations(messages: list[dict], answer: str, n_sources: int) -> str:
     """Small models forget citations or invent source numbers. One repair pass: rewrite with valid [n]."""
     resp = _client.chat(
         model=LLM_MODEL,
-        options={"temperature": LLM_TEMPERATURE},
+        options=LLM_OPTIONS,
         messages=messages[:-1] + [{"role": "user", "content": (
             "Rewrite this answer so that every factual statement ends with the number of the source it "
             f"came from, like [1] or [1][2]. The only valid source numbers are 1 to {n_sources}. "

@@ -134,5 +134,8 @@ def eval_agent():
 
 
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "retrieval"
+    # python -m eval.run_eval agent [--questions eval/questions_set2.jsonl]
+    if "--questions" in sys.argv:
+        QUESTIONS = Path(sys.argv[sys.argv.index("--questions") + 1])
+    mode = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "retrieval"
     {"retrieval": eval_retrieval, "agent": eval_agent}[mode]()

@@ -96,9 +96,22 @@ def normalize_drug(name: str | None) -> str:
     return n
 
 
+def implied_drugs(text: str) -> set[str]:
+    """Generic drug names a text names or implies: generic names, brand/lay names, and the members of any
+    drug class it mentions ("blood thinner" implies warfarin, apixaban, clopidogrel)."""
+    t = text.lower()
+    has = lambda term: re.search(r"\b" + re.escape(term) + r"\b", t) is not None      # noqa: E731
+    out = {g for g in _labels() if has(g)}
+    out |= {generic for name, generic in {**_brand_index(), **SYNONYMS}.items() if has(name)}
+    for cls_name, members in DRUG_CLASSES.items():
+        if has(cls_name):
+            out.update(members)
+    return out
+
+
 def search_documents(query: str) -> tuple[list[dict], str]:
     """Semantic search over FDA label sections and PubMed abstracts."""
-    hits, correction = corrective_search(query, get_retriever(), 5)
+    hits, correction = corrective_search(query, get_retriever(), 5, implied=implied_drugs)
     sources = [{
         "key": h.chunk["chunk_id"], "title": h.chunk["title"], "section": h.chunk["section"],
         "url": h.chunk.get("url", ""), "text": h.chunk["text"], "score": round(h.score, 3),

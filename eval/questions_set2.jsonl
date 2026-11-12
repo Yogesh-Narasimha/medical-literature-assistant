@@ -1,0 +1,19 @@
+{"q": "Can rosuvastatin cause liver problems?", "drug": "rosuvastatin", "sections": ["warnings_and_cautions", "warnings", "adverse_reactions"], "tool": "search_documents"}
+{"q": "What is the usual starting dose of metoprolol?", "drug": "metoprolol", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "Who should not take pantoprazole?", "drug": "pantoprazole", "sections": ["contraindications"], "tool": "lookup_drug_label"}
+{"q": "What is prednisone used to treat?", "drug": "prednisone", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What side effects can escitalopram have?", "drug": "escitalopram", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "Does hydrochlorothiazide have a boxed warning?", "drug": "hydrochlorothiazide", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "How should albuterol be dosed?", "drug": "albuterol", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "What is cetirizine for?", "drug": "cetirizine", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What is insulin glargine for?", "drug": "insulin glargine", "sections": ["indications_and_usage", "mechanism_of_action"], "tool": "search_documents"}
+{"q": "Is sitagliptin okay for someone with kidney disease?", "drug": "sitagliptin", "sections": ["use_in_specific_populations", "dosage_and_administration", "warnings_and_cautions", "contraindications"], "tool": "search_documents"}
+{"q": "Can I take apixaban with aspirin?", "drug": "apixaban", "sections": ["drug_interactions", "warnings_and_cautions", "boxed_warning"], "tool": "check_interaction"}
+{"q": "Is there a suicide warning on escitalopram?", "drug": "escitalopram", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "Does montelukast affect mood or behaviour?", "drug": "montelukast", "sections": ["boxed_warning", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "How is levetiracetam dosed?", "drug": "levetiracetam", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "Is naproxen safe in the third trimester of pregnancy?", "drug": "naproxen", "sections": ["use_in_specific_populations", "warnings_and_cautions", "boxed_warning", "contraindications"], "tool": "search_documents"}
+{"q": "What are the common adverse reactions of furosemide?", "drug": "furosemide", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "What are the symptoms of the flu?", "drug": null, "sections": [], "tool": null}
+{"q": "Is Ozempic safe for weight loss?", "drug": null, "sections": [], "tool": null}
+{"q": "How tall is Mount Everest?", "drug": null, "sections": [], "tool": null}

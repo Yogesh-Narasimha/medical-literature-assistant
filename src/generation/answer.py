@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import ollama
 
 from src.citations import parse_citations
-from src.config import LLM_MODEL, LLM_TEMPERATURE, MIN_RELEVANCE, OLLAMA_HOST, TOP_K
+from src.config import LLM_MODEL, LLM_OPTIONS, MIN_RELEVANCE, OLLAMA_HOST, TOP_K
 from src.retrieval.dense import DenseRetriever, Hit
 
 NOT_FOUND = "I could not find this in the indexed documents."
@@ -48,7 +48,7 @@ def answer_question(question: str, retriever: DenseRetriever, k: int = TOP_K) ->
 
     resp = _client.chat(
         model=LLM_MODEL,
-        options={"temperature": LLM_TEMPERATURE},
+        options=LLM_OPTIONS,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Sources:\n{build_context(hits)}\n\nQuestion: {question}"},
