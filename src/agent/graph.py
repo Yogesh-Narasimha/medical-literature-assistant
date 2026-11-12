@@ -7,13 +7,13 @@
             v
            END (final answer with [n] citations)
 """
-import re
 from typing import TypedDict
 
 import ollama
 from langgraph.graph import END, START, StateGraph
 
 from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS
+from src.citations import has_citation, parse_citations
 from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_TEMPERATURE, OLLAMA_HOST
 
 NOT_FOUND = "I could not find this in the indexed documents."
@@ -120,13 +120,12 @@ def run_agent(question: str) -> dict:
         "sources": [], "trace": [], "steps": 0,
     })
     answer = state["messages"][-1]["content"].strip() or NOT_FOUND
-    if state["sources"] and NOT_FOUND.lower() not in answer.lower() and not re.search(r"\[\d+\]", answer):
+    if state["sources"] and NOT_FOUND.lower() not in answer.lower() and not has_citation(answer):
         answer = _add_citations(state["messages"], answer)
-    used = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)})
-    cited = [n for n in used if 1 <= n <= len(state["sources"])]
+    cited, invalid = parse_citations(answer, len(state["sources"]))
     return {
         "question": question, "answer": answer, "cited": cited,
-        "invalid": [n for n in used if n not in cited],
+        "invalid": invalid,
         "sources": state["sources"], "trace": state["trace"],
         "answered": NOT_FOUND.lower() not in answer.lower(),
     }

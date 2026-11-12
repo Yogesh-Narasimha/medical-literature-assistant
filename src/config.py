@@ -1,5 +1,6 @@
 """Central settings. Change values here instead of inside the scripts,
 so later experiments (chunk size, models, top-k) are one-line edits."""
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -11,7 +12,7 @@ INDEX_DIR = DATA_DIR / "index"
 # ---- Models (served locally by Ollama) ----
 EMBED_MODEL = "nomic-embed-text"
 LLM_MODEL = "qwen2.5:3b"          # used from Day 2 onwards
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")   # overridden in Docker
 
 # ---- Chunking (in words; ~1.3 tokens per word) ----
 CHUNK_SIZE = 200

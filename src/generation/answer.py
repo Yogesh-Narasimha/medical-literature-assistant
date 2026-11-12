@@ -7,11 +7,11 @@ Anti-hallucination measures (a common interview question):
 4. Temperature 0, so answers are reproducible.
 5. We check that every [n] the model cites really exists.
 """
-import re
 from dataclasses import dataclass, field
 
 import ollama
 
+from src.citations import parse_citations
 from src.config import LLM_MODEL, LLM_TEMPERATURE, MIN_RELEVANCE, OLLAMA_HOST, TOP_K
 from src.retrieval.dense import DenseRetriever, Hit
 
@@ -56,8 +56,6 @@ def answer_question(question: str, retriever: DenseRetriever, k: int = TOP_K) ->
     )
     text = resp["message"]["content"].strip()
 
-    used = sorted({int(n) for n in re.findall(r"\[(\d+)\]", text)})
-    cited = [n for n in used if 1 <= n <= len(hits)]
-    invalid = [n for n in used if n not in cited]
+    cited, invalid = parse_citations(text, len(hits))
     answered = NOT_FOUND.lower() not in text.lower()
     return Answer(question, text, hits, cited, invalid, answered)

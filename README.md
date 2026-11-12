@@ -2,7 +2,9 @@
 
 An agentic RAG system that answers medical and drug questions from FDA drug labels and PubMed abstracts, with citations for every answer. Everything runs locally with [Ollama](https://ollama.com), so no API keys are needed.
 
-> Status: **working end to end.** Retrieval, cited answers, a LangGraph ReAct agent, an eval harness, a FastAPI backend and a Streamlit UI. Hybrid search, reranking and embedding fine-tuning are next (see roadmap).
+> Status: **working end to end** (API and UI both run-tested locally). Retrieval, cited answers, a LangGraph ReAct agent, an eval harness, a FastAPI backend and a Streamlit UI. Hybrid search, reranking and embedding fine-tuning are next (see roadmap).
+
+![Streamlit UI: cited answer, expandable sources, agent trace](docs/ui-screenshot.png)
 
 ## How it works
 
@@ -61,6 +63,23 @@ PubMed). Every tool result is numbered `[n]`; the answer must cite those numbers
 citations are flagged in the CLI, API and UI.
 
 Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`, then rebuild the index.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q          # 21 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion,
+                             # corrective RAG, citation parsing, drug-name normalisation, train/test split)
+```
+
+The tests were checked by deliberately breaking the code (the hybrid fusion key and the out-of-domain
+refusal): the matching tests failed, then passed again once the code was restored.
+
+## Docker (written but not tested)
+
+`Dockerfile` and `docker-compose.yml` run Ollama, the API (`:8000`) and the UI (`:8501`) as services. I could
+not build or run them because Docker is not installed on my development machine, so treat them as an
+untested starting point. The commands to pull models and build the index are in the compose file header.
 
 ## Results (qwen2.5:3b + nomic-embed-text, 1,837 chunks, 19 in-scope + 3 out-of-scope questions)
 
