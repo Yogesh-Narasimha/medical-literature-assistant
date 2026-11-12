@@ -7,13 +7,14 @@
             v
            END (final answer with [n] citations)
 """
+import re
 from typing import TypedDict
 
 import ollama
 from langgraph.graph import END, START, StateGraph
 
 from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS
-from src.citations import has_citation, parse_citations
+from src.citations import has_citation, parse_citations, strip_invalid, uncited_sentences
 from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_TEMPERATURE, OLLAMA_HOST
 
 NOT_FOUND = "I could not find this in the indexed documents."
@@ -23,8 +24,12 @@ SYSTEM_PROMPT = f"""You are a medical literature assistant with three tools:
 - lookup_drug_label: use ONLY when the user asks for a specific label section of a named drug:
   boxed warning, dosage, contraindications, or "what drugs interact with X".
 - search_documents: use for everything else: side effects, risks, how a drug works, what it is used
-  for, evidence, comparisons, questions about a drug class. It searches FDA labels AND PubMed abstracts.
+  for, evidence, comparisons, questions about a drug class, and ANY question about pregnancy,
+  breastfeeding, children, elderly, kidney or liver problems (the answer may sit in several label
+  sections, and this tool searches all of them plus PubMed abstracts).
 Call a tool first, read the results, and call another tool if needed.
+If the user asks what THEY personally should take or do for a symptom, do not recommend a drug or
+dose; instead summarize what the sources say and say that a clinician or pharmacist should decide.
 Tool results are numbered sources like [1], [2]. Answer ONLY from those sources and cite every
 factual statement with its number, e.g. [1][3]. If the sources do not answer the question, reply
 exactly: "{NOT_FOUND}" Never use outside knowledge. Keep answers short. This is not personal
@@ -94,18 +99,42 @@ def build_graph():
     return g.compile()
 
 
-def _add_citations(messages: list[dict], answer: str) -> str:
-    """Small models often forget citations. One repair pass: rewrite with [n] markers."""
+def _add_citations(messages: list[dict], answer: str, n_sources: int) -> str:
+    """Small models forget citations or invent source numbers. One repair pass: rewrite with valid [n]."""
     resp = _client.chat(
         model=LLM_MODEL,
         options={"temperature": LLM_TEMPERATURE},
         messages=messages[:-1] + [{"role": "user", "content": (
             "Rewrite this answer so that every factual statement ends with the number of the source it "
-            "came from, like [1] or [1][2]. Use only the numbered sources above and keep it short. "
+            f"came from, like [1] or [1][2]. The only valid source numbers are 1 to {n_sources}. "
+            "Use only the numbered sources above and keep it short. "
             "If a statement is not supported by any source, delete it.\n\n"
             f"Answer to rewrite:\n{answer}")}],
     )
     return resp["message"]["content"].strip() or answer
+
+
+_SPECIAL_POPULATION = re.compile(
+    r"pregnan|breast-?feed|lactat|nursing|infant|child|pediatric|elderly|older adult|renal|kidney|"
+    r"hepatic|liver", re.I)
+
+
+_PERSONAL_ADVICE = re.compile(
+    r"what (should|can|do) i (take|use|do)|which (one |drug |medicine |medication )?should i|should i (take|use)|"
+    r"what('s| is) (best|safest) (for|to take)|i have (a |an )?\w+.*what", re.I)
+
+
+def routing_hint(question: str) -> str:
+    """Small models ignore general routing rules but follow a direct hint. Questions about special
+    populations need several label sections (pregnancy limits can sit in contraindications AND
+    use_in_specific_populations), which a single-section lookup would miss."""
+    hint = ""
+    if _SPECIAL_POPULATION.search(question):
+        hint += "\n\n(Tool hint: use search_documents for this question; it covers every label section.)"
+    if _PERSONAL_ADVICE.search(question):
+        hint += ("\n\n(Important: do NOT recommend a specific drug or dose for this person. Summarize only what "
+                 "the sources say about uses and cautions, and tell them a clinician or pharmacist should decide.)")
+    return hint
 
 
 _graph = None
@@ -116,16 +145,29 @@ def run_agent(question: str) -> dict:
     global _graph
     _graph = _graph or build_graph()
     state = _graph.invoke({
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question}],
+        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question + routing_hint(question)}],
         "sources": [], "trace": [], "steps": 0,
     })
     answer = state["messages"][-1]["content"].strip() or NOT_FOUND
-    if state["sources"] and NOT_FOUND.lower() not in answer.lower() and not has_citation(answer):
-        answer = _add_citations(state["messages"], answer)
-    cited, invalid = parse_citations(answer, len(state["sources"]))
+    n = len(state["sources"])
+    if n == 0:
+        # Nothing was retrieved, so any answer would come from the model's own memory. The whole point of
+        # the system is to answer only from documents, so refuse instead.
+        answer = NOT_FOUND
+    if n and NOT_FOUND.lower() not in answer.lower():
+        _, bad = parse_citations(answer, n)
+        if not has_citation(answer) or bad:        # missing or made-up citations: one repair pass
+            answer = _add_citations(state["messages"], answer, n)
+        answer = strip_invalid(answer, n)          # whatever made-up markers survive are removed
+    if n and _PERSONAL_ADVICE.search(question) and NOT_FOUND.lower() not in answer.lower():
+        # The 3B model sometimes still names a drug to take. A fixed notice makes the limit unmistakable.
+        answer = ("I can't recommend what you personally should take; a clinician or pharmacist should decide. "
+                  "What the indexed sources say:\n\n" + answer)
+    cited, invalid = parse_citations(answer, n)
     return {
         "question": question, "answer": answer, "cited": cited,
         "invalid": invalid,
+        "uncited": uncited_sentences(answer) if n and NOT_FOUND.lower() not in answer.lower() else [],
         "sources": state["sources"], "trace": state["trace"],
         "answered": NOT_FOUND.lower() not in answer.lower(),
     }

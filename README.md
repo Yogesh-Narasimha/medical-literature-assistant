@@ -68,8 +68,8 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 21 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion,
-                             # corrective RAG, citation parsing, drug-name normalisation, train/test split)
+python -m pytest -q          # 29 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, corrective RAG,
+                             # citation checks, drug-class expansion, routing hints, train/test split)
 ```
 
 The tests were checked by deliberately breaking the code (the hybrid fusion key and the out-of-domain
@@ -109,8 +109,8 @@ and a model download).
 | Metric | Score |
 |---|---|
 | Tool routing vs. gold | 0.89 |
-| Answers with citations | 0.95 |
-| All citations valid | 0.84 |
+| Answers with citations | 1.00 |
+| All citations valid | 1.00 |
 | Answers citing a gold source | 0.84 |
 | Out-of-scope refusal | 1.00 (3/3) |
 
@@ -125,6 +125,28 @@ A drug-name normalizer maps brand and lay names (Tylenol, paracetamol, Coumadin)
 tools use. The refusal threshold (0.65) sits in the measured gap between out-of-scope (max 0.57) and in-scope
 (min 0.66) top-1 dense scores, a narrow margin on the lay-language questions. Each agent answer takes 1-2
 minutes on a laptop CPU.
+
+### Guardrails added after manual testing
+
+Running 12 varied questions by hand (not just the eval set) exposed failures the metrics had missed, so the
+agent now has these safeguards (each has unit tests):
+
+- **No sources, no answer:** if nothing was retrieved the answer is "not found", never the model's memory
+  ("Tylenol with a blood thinner" used to be answered from memory after a failed lookup).
+- **Citation repair:** missing or non-existent `[n]` markers trigger one rewrite pass, and any made-up marker
+  that survives is stripped. (A pregnancy question had cited a source `[5]` that did not exist.)
+- **Uncited-statement flag:** factual sentences after the last citation of a paragraph are listed as
+  unverified in the CLI, API (`uncited_statements`) and UI.
+- **Routing hints:** pregnancy/kidney/liver/child questions are sent to document search (they span several
+  label sections); a single-section lookup had missed the warfarin pregnancy contraindication.
+- **Tool robustness:** brand and lay drug names, drug classes ("blood thinner", "NSAID") and placeholder
+  arguments ("nil") are resolved or fall back to a sensible lookup instead of failing.
+- **Personal advice:** "what should I take for X" answers start with a fixed notice that a clinician or
+  pharmacist must decide. The 3B model still sometimes names drugs in the body, so this is a safeguard, not
+  a guarantee.
+
+Still a 3B model: it can phrase things loosely (for example softening "contraindicated"), which is why the
+sources are always shown next to the answer.
 
 Known weak spots: ciprofloxacin and PPI risk questions still miss under the strict metric (the cipro label
 openFDA returned is short and has no boxed warning); "what painkiller is safest for a stomach ulcer" retrieves

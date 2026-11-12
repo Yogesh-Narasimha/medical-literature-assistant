@@ -23,6 +23,8 @@ def show(r: dict):
             print(f"  [{n}] {s['title']} [{s['section']}]  {s['url']}")
     elif r["answered"]:
         print("Warning: no citations, treat as unverified.")
+    for s in r.get("uncited", []):
+        print(f"Warning: no source for: {s}")
     if r["invalid"]:
         print(f"Warning: non-existent citations {r['invalid']}")
     print()

@@ -157,7 +157,7 @@ def tools(monkeypatch):
                       "brand_names": ["Advil"],
                       "sections": {"warnings": "Ask a doctor if taking a blood thinning (anticoagulant) drug."}},
         "acetaminophen": {"drug": "acetaminophen", "doc_id": "fda:a", "title": "FDA label: acetaminophen",
-                          "url": "u", "brand_names": ["Tylenol"], "sections": {"warnings": "Liver warning."}},
+                          "url": "u", "brand_names": ["Tylenol"], "sections": {"warnings": "Liver warning. Ask a doctor if taking the blood thinning drug warfarin."}},
     }
     monkeypatch.setattr(t, "_labels", lambda: labels)
     monkeypatch.setattr(t, "_brand_index", lambda: {"coumadin": "warfarin", "advil": "ibuprofen"})
@@ -199,3 +199,60 @@ def test_split_is_deterministic_and_by_document():
     assert {split_of(f"doc{i}") for i in range(200)} == {"train", "test"}
     raw = "1. What are the side effects of metformin?\n- Can I take it with food?\nnot a question\nShort?"
     assert parse_questions(raw) == ["What are the side effects of metformin?", "Can I take it with food?"]
+
+
+# ------------------------------------------------- citation checking (agent safety net)
+def test_strip_invalid_removes_only_made_up_markers():
+    from src.citations import strip_invalid
+    assert strip_invalid("Fact [1][5]. Other [2].", 2) == "Fact [1]. Other [2]."
+
+
+def test_uncited_sentences_flags_unsourced_facts_but_not_framing():
+    from src.citations import uncited_sentences
+    answer = ("Ibuprofen raises the risk of bleeding with warfarin [1]. "
+              "It is important to monitor your INR levels if you are taking both. "
+              "Consult your healthcare provider for further guidance.")
+    assert uncited_sentences(answer) == ["It is important to monitor your INR levels if you are taking both."]
+    assert uncited_sentences("Short.") == []
+
+
+def test_trailing_citation_covers_the_paragraph_before_it():
+    from src.citations import uncited_sentences
+    covered = "Warfarin passes into breast milk in small amounts and may need monitoring. Infants can bruise easily. [1]"
+    assert uncited_sentences(covered) == []
+    after = covered + " Dose changes are common during the first weeks of treatment."
+    assert uncited_sentences(after) == ["Dose changes are common during the first weeks of treatment."]
+
+
+def test_routing_hint_only_for_special_populations():
+    from src.agent.graph import routing_hint
+    assert "search_documents" in routing_hint("Can pregnant women take warfarin?")
+    assert "search_documents" in routing_hint("Is metformin safe with kidney disease?")
+    assert routing_hint("What is the boxed warning for fluoxetine?") == ""
+
+
+def test_personal_advice_hint_and_no_false_triggers():
+    from src.agent.graph import routing_hint
+    for q in ["I have a headache, what should I take?", "Should I take ibuprofen for back pain?"]:
+        assert "do NOT recommend" in routing_hint(q)
+    for q in ["Can I take ibuprofen with warfarin?", "What are the side effects of metformin?",
+              "What is the boxed warning for fluoxetine?"]:
+        assert "do NOT recommend" not in routing_hint(q)
+
+
+def test_based_on_the_information_is_not_exempt_framing():
+    from src.citations import uncited_sentences
+    assert uncited_sentences("Based on the information available, Tylenol can be taken with warfarin.") != []
+
+
+def test_check_interaction_expands_drug_classes(tools):
+    # "blood thinner" is a class, not a drug: it should expand to the labelled members (warfarin here)
+    sources, info = tools.check_interaction("tylenol", "blood thinner")
+    assert sources and info == ""
+    assert {s["title"] for s in sources} <= {"FDA label: acetaminophen", "FDA label: warfarin"}
+
+
+def test_check_interaction_placeholder_second_drug_falls_back(tools):
+    for placeholder in ("nil", "any other drug", "none"):
+        sources, _ = tools.check_interaction("warfarin", placeholder)
+        assert sources and sources[0]["section"] == "drug_interactions"

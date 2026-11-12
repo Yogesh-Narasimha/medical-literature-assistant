@@ -26,6 +26,9 @@ if question:
         st.warning(f"The model cited non-existent sources {r['invalid']}.")
     elif r["answered"] and not r["cited"]:
         st.warning("This answer has no citations, so treat it as unverified.")
+    if r["uncited"]:
+        st.warning("Statements below have no source and should be treated as unverified:\n\n"
+                   + "\n".join(f"- {s}" for s in r["uncited"]))
     if r["cited"]:
         st.subheader("Sources")
         for n in r["cited"]:

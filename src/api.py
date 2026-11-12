@@ -32,5 +32,6 @@ def ask(body: Ask):
             for n in r["cited"]
         ],
         "invalid_citations": r["invalid"],
+        "uncited_statements": r["uncited"],     # factual sentences with no [n]: treat as unverified
         "tool_calls": r["trace"],
     }

@@ -56,6 +56,20 @@ def _brand_index() -> dict[str, str]:
     return idx
 
 
+# Drug classes people name instead of a drug -> member drugs that have a label in the store.
+DRUG_CLASSES = {
+    "blood thinner": ["warfarin", "apixaban", "clopidogrel"], "blood thinners": ["warfarin", "apixaban", "clopidogrel"],
+    "anticoagulant": ["warfarin", "apixaban"], "anticoagulants": ["warfarin", "apixaban"],
+    "antiplatelet": ["clopidogrel", "aspirin"], "nsaid": ["ibuprofen", "naproxen", "aspirin"],
+    "nsaids": ["ibuprofen", "naproxen", "aspirin"], "painkiller": ["ibuprofen", "naproxen", "acetaminophen"],
+    "ssri": ["sertraline", "fluoxetine", "escitalopram"], "antidepressant": ["sertraline", "fluoxetine", "escitalopram"],
+    "statin": ["atorvastatin", "rosuvastatin"], "statins": ["atorvastatin", "rosuvastatin"],
+    "ace inhibitor": ["lisinopril"], "diuretic": ["furosemide", "hydrochlorothiazide", "spironolactone"],
+    "antibiotic": ["amoxicillin", "azithromycin", "ciprofloxacin", "doxycycline"],
+    "proton pump inhibitor": ["omeprazole", "pantoprazole"], "ppi": ["omeprazole", "pantoprazole"],
+}
+
+
 def normalize_drug(name: str | None) -> str:
     """Map a brand/lay/misspelt-case drug name to the generic key used by the label store."""
     n = str(name or "").strip().lower()
@@ -131,6 +145,21 @@ def check_interaction(drug_a: str, drug_b: str) -> tuple[list[dict], str]:
         return lookup_drug_label(drug_a or drug_b or "", "drug_interactions")
     a, b = normalize_drug(drug_a), normalize_drug(drug_b)
     labels, sources = _labels(), []
+    # One name is not a drug or class (the model often fills the blank with "nil", "any", "other drugs"):
+    # fall back to the known drug's own interactions section instead of failing.
+    known = lambda x: x in labels or x in DRUG_CLASSES          # noqa: E731
+    if known(a) != known(b):
+        return lookup_drug_label(a if known(a) else b, "drug_interactions")
+    # A drug class instead of a drug ("Tylenol with a blood thinner"): check each member that has a label.
+    for one, cls_name in ((a, b), (b, a)):
+        members = DRUG_CLASSES.get(cls_name.lower())
+        if members and one in labels:
+            merged: list[dict] = []
+            for m in members:
+                if m in labels and m != one:
+                    found, _ = check_interaction(one, m)
+                    merged += [s for s in found if all(s["key"] != t["key"] for t in merged)]
+            return merged[:4], "" if merged else f"No label text links {one} with {cls_name}."
     for me, other in ((a, b), (b, a)):
         if me not in labels:
             return [], f"No label for '{me}'. Available drugs: {', '.join(sorted(labels))}"
