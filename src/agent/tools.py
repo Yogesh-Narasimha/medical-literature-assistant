@@ -3,6 +3,7 @@
 Sources are plain dicts; the graph assigns each a global citation number [n].
 `info` is the message shown to the LLM when no sources came back.
 """
+import difflib
 import json
 import re
 from functools import lru_cache
@@ -56,6 +57,10 @@ def _brand_index() -> dict[str, str]:
     return idx
 
 
+# Words the model puts in a drug slot when it means "no second drug".
+PLACEHOLDERS = {"nil", "none", "null", "n/a", "na", "any", "any drug", "any other drug", "other drugs",
+                "other drug", "all", "all drugs", "everything", "unknown", "other", "others", ""}
+
 # Drug classes people name instead of a drug -> member drugs that have a label in the store.
 DRUG_CLASSES = {
     "blood thinner": ["warfarin", "apixaban", "clopidogrel"], "blood thinners": ["warfarin", "apixaban", "clopidogrel"],
@@ -71,11 +76,24 @@ DRUG_CLASSES = {
 
 
 def normalize_drug(name: str | None) -> str:
-    """Map a brand/lay/misspelt-case drug name to the generic key used by the label store."""
+    """Map a brand/lay/misspelt drug name to the generic key used by the label store."""
     n = str(name or "").strip().lower()
     if n in _labels():
         return n
-    return SYNONYMS.get(n) or _brand_index().get(n) or n
+    hit = SYNONYMS.get(n) or _brand_index().get(n)
+    if hit:
+        return hit
+    if n and n not in DRUG_CLASSES and n not in PLACEHOLDERS:
+        words = lambda s: set(re.findall(r"[a-z0-9]+", s)) - {"and"}          # noqa: E731
+        # "sacubitril valsartan" == "sacubitril and valsartan": same words once "and" is ignored
+        same = next((k for k in _labels() if words(k) == words(n)), None)
+        if same:
+            return same
+        # "ibuprofin" -> "ibuprofen": a close spelling of exactly one known drug
+        close = difflib.get_close_matches(n, list(_labels()), n=1, cutoff=0.85)
+        if close:
+            return close[0]
+    return n
 
 
 def search_documents(query: str) -> tuple[list[dict], str]:
@@ -149,7 +167,18 @@ def check_interaction(drug_a: str, drug_b: str) -> tuple[list[dict], str]:
     # fall back to the known drug's own interactions section instead of failing.
     known = lambda x: x in labels or x in DRUG_CLASSES          # noqa: E731
     if known(a) != known(b):
-        return lookup_drug_label(a if known(a) else b, "drug_interactions")
+        have, other = (a, b) if known(a) else (b, a)
+        if other in PLACEHOLDERS:
+            return lookup_drug_label(have, "drug_interactions")
+        if have in labels:
+            # A real drug name we have no label for ("lithium"): does the label we DO have mention it?
+            found = _mentions(labels[have], [other])
+            if found:
+                return found, ""
+            return [], (f"The {have} label does not mention {other}, and there is no label for {other} in the "
+                        "index. Do not assume the combination is safe; say the indexed documents have no "
+                        "information on it.")
+        return lookup_drug_label(have, "drug_interactions")
     # A drug class instead of a drug ("Tylenol with a blood thinner"): check each member that has a label.
     for one, cls_name in ((a, b), (b, a)):
         members = DRUG_CLASSES.get(cls_name.lower())

@@ -69,3 +69,6 @@ LLM_TEMPERATURE = 0.0
 # ---- Agent (Day 3) ----
 AGENT_MAX_STEPS = 4          # max think->act->observe rounds before forcing an answer
 LABEL_SNIPPET_CHARS = 2500   # how much of a label section the lookup tool returns
+
+# ---- Reranking ----
+USE_RERANKER = True     # cross-encoder over the top 20 candidates; needs torch (falls back silently without it)

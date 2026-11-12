@@ -17,6 +17,34 @@
 {"q": "Is Tylenol safe to take with a blood thinner?", "drug": "acetaminophen", "sections": ["warnings"], "tool": "check_interaction"}
 {"q": "Can I take paracetamol with coumadin?", "drug": "acetaminophen", "sections": ["warnings"], "tool": "check_interaction"}
 {"q": "What painkiller is safest for my stomach ulcer?", "drug": "acetaminophen", "sections": ["warnings", "indications_and_usage"], "tool": "search_documents"}
+{"q": "What is the boxed warning for sertraline?", "drug": "sertraline", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for bupropion?", "drug": "bupropion", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for alprazolam?", "drug": "alprazolam", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for montelukast?", "drug": "montelukast", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for levothyroxine?", "drug": "levothyroxine", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for losartan?", "drug": "losartan", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is the boxed warning for sacubitril and valsartan?", "drug": "sacubitril and valsartan", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What is amlodipine used for?", "drug": "amlodipine", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What is gabapentin indicated for?", "drug": "gabapentin", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What is levetiracetam used to treat?", "drug": "levetiracetam", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What is the recommended dosage of levothyroxine?", "drug": "levothyroxine", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "What are the contraindications of spironolactone?", "drug": "spironolactone", "sections": ["contraindications"], "tool": "lookup_drug_label"}
+{"q": "What are the contraindications of furosemide?", "drug": "furosemide", "sections": ["contraindications"], "tool": "lookup_drug_label"}
+{"q": "What are the common side effects of gabapentin?", "drug": "gabapentin", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "What adverse reactions does doxycycline cause?", "drug": "doxycycline", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "How does spironolactone work?", "drug": "spironolactone", "sections": ["mechanism_of_action"], "tool": "search_documents"}
+{"q": "How does montelukast work?", "drug": "montelukast", "sections": ["mechanism_of_action"], "tool": "search_documents"}
+{"q": "Can I take clopidogrel with omeprazole?", "drug": "clopidogrel", "sections": ["drug_interactions"], "tool": "check_interaction"}
+{"q": "Can I take sertraline with ibuprofen?", "drug": "sertraline", "sections": ["drug_interactions"], "tool": "check_interaction"}
+{"q": "Can I take lisinopril together with spironolactone?", "drug": "lisinopril", "sections": ["drug_interactions"], "tool": "check_interaction"}
+{"q": "What drugs interact with atorvastatin?", "drug": "atorvastatin", "sections": ["drug_interactions"], "tool": "lookup_drug_label"}
+{"q": "Is naproxen safe for people with kidney problems?", "drug": "naproxen", "sections": ["warnings_and_cautions", "warnings", "use_in_specific_populations", "contraindications"], "tool": "search_documents"}
+{"q": "Can I take losartan while pregnant?", "drug": "losartan", "sections": ["boxed_warning", "use_in_specific_populations", "warnings_and_cautions"], "tool": "search_documents"}
+{"q": "What are the warnings for azithromycin?", "drug": "azithromycin", "sections": ["warnings_and_cautions", "warnings"], "tool": "lookup_drug_label"}
 {"q": "Who won the 2018 football world cup?", "drug": null, "sections": [], "tool": null}
 {"q": "What is the best pizza topping?", "drug": null, "sections": [], "tool": null}
 {"q": "How do I fix a flat bicycle tire?", "drug": null, "sections": [], "tool": null}
+{"q": "What is the weather in Paris today?", "drug": null, "sections": [], "tool": null}
+{"q": "Write me a poem about cats.", "drug": null, "sections": [], "tool": null}
+{"q": "What are the side effects of lithium?", "drug": null, "sections": [], "tool": null}
+{"q": "What is the recommended dose of adalimumab?", "drug": null, "sections": [], "tool": null}

@@ -8,14 +8,17 @@
            END (final answer with [n] citations)
 """
 import re
+import time
 from typing import TypedDict
 
 import ollama
 from langgraph.graph import END, START, StateGraph
 
+from src.agent.coverage import missing_subject
 from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS
-from src.citations import has_citation, parse_citations, strip_invalid, uncited_sentences
+from src.citations import has_citation, parse_citations, strip_invalid, strip_markers, uncited_sentences
 from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_TEMPERATURE, OLLAMA_HOST
+from src.tracing import log_trace
 
 NOT_FOUND = "I could not find this in the indexed documents."
 
@@ -43,16 +46,21 @@ class State(TypedDict):
     sources: list[dict]          # global, in citation order: sources[n-1] is [n]
     trace: list[dict]            # tool calls made, for the UI / eval
     steps: int
+    llm_calls: int               # observability: how many LLM calls, how long, how many tokens
+    llm_ms: float
+    tokens: int
 
 
 def agent_node(state: State) -> dict:
     force_answer = state["steps"] >= AGENT_MAX_STEPS
+    t0 = time.perf_counter()
     resp = _client.chat(
         model=LLM_MODEL,
         messages=state["messages"],
         tools=None if force_answer else TOOL_SCHEMAS,
         options={"temperature": LLM_TEMPERATURE},
     )
+    llm_ms = (time.perf_counter() - t0) * 1000
     msg = resp["message"]
     entry = {"role": "assistant", "content": msg.get("content") or ""}
     if msg.get("tool_calls"):
@@ -60,7 +68,9 @@ def agent_node(state: State) -> dict:
             {"function": {"name": c["function"]["name"], "arguments": dict(c["function"]["arguments"])}}
             for c in msg["tool_calls"]
         ]
-    return {"messages": state["messages"] + [entry], "steps": state["steps"] + 1}
+    return {"messages": state["messages"] + [entry], "steps": state["steps"] + 1,
+            "llm_calls": state["llm_calls"] + 1, "llm_ms": state["llm_ms"] + llm_ms,
+            "tokens": state["tokens"] + (resp.get("prompt_eval_count") or 0) + (resp.get("eval_count") or 0)}
 
 
 def tools_node(state: State) -> dict:
@@ -68,6 +78,7 @@ def tools_node(state: State) -> dict:
     for call in state["messages"][-1]["tool_calls"]:
         name, args = call["function"]["name"], call["function"]["arguments"]
         fn = TOOL_FUNCS.get(name)
+        t0 = time.perf_counter()
         try:
             new, info = fn(**args) if fn else ([], f"Unknown tool {name}")
         except Exception as e:   # a bad tool call must not crash the agent; tell the model instead
@@ -80,7 +91,8 @@ def tools_node(state: State) -> dict:
                 idx = len(sources) - 1
             lines.append(f"[{idx + 1}] {s['title']} [{s['section']}]\n{s['text']}")
         # `info` is "" for plain successes, a corrective-RAG note ("query rewritten to ...") or an error message
-        trace.append({"tool": name, "args": args, "n_results": len(new), "note": info})
+        trace.append({"tool": name, "args": args, "n_results": len(new), "note": info,
+                      "ms": round((time.perf_counter() - t0) * 1000)})
         messages.append({"role": "tool", "content": "\n\n".join(lines) or info, "tool_name": name})
     return {"messages": messages, "sources": sources, "trace": trace}
 
@@ -111,7 +123,11 @@ def _add_citations(messages: list[dict], answer: str, n_sources: int) -> str:
             "If a statement is not supported by any source, delete it.\n\n"
             f"Answer to rewrite:\n{answer}")}],
     )
-    return resp["message"]["content"].strip() or answer
+    rewritten = resp["message"]["content"].strip()
+    # The 3B model sometimes "repairs" an answer into a bare "[1]". Keep the original rather than lose the content.
+    if len(strip_markers(rewritten)) < max(30, len(strip_markers(answer)) // 4):
+        return answer
+    return rewritten
 
 
 _SPECIAL_POPULATION = re.compile(
@@ -144,9 +160,26 @@ def run_agent(question: str) -> dict:
     """Returns {question, answer, cited, invalid, sources, trace, answered}."""
     global _graph
     _graph = _graph or build_graph()
+    t_start = time.perf_counter()
+    missing = missing_subject(question)
+    if missing:
+        # The question is about a drug the index has no label or abstract for. Retrieval would return chunks
+        # that merely mention it (lithium appears in other drugs' interaction sections), which would produce a
+        # confident answer to a different question. Say so instead.
+        result = {
+            "question": question, "cited": [], "invalid": [], "uncited": [], "sources": [], "answered": False,
+            "answer": f"{NOT_FOUND} The indexed documents have no label or abstract for {', '.join(missing)}.",
+            "trace": [{"tool": "coverage_check", "args": {"missing": missing}, "n_results": 0,
+                       "note": "named drug not in index; refused before retrieval", "ms": 0}],
+            "stats": {"total_ms": round((time.perf_counter() - t_start) * 1000), "llm_calls": 1, "llm_ms": 0,
+                      "tokens": 0, "steps": 0},
+        }
+        log_trace(result)
+        return result
     state = _graph.invoke({
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question + routing_hint(question)}],
-        "sources": [], "trace": [], "steps": 0,
+        "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                     {"role": "user", "content": question + routing_hint(question)}],
+        "sources": [], "trace": [], "steps": 0, "llm_calls": 0, "llm_ms": 0.0, "tokens": 0,
     })
     answer = state["messages"][-1]["content"].strip() or NOT_FOUND
     n = len(state["sources"])
@@ -164,10 +197,14 @@ def run_agent(question: str) -> dict:
         answer = ("I can't recommend what you personally should take; a clinician or pharmacist should decide. "
                   "What the indexed sources say:\n\n" + answer)
     cited, invalid = parse_citations(answer, n)
-    return {
+    result = {
         "question": question, "answer": answer, "cited": cited,
         "invalid": invalid,
         "uncited": uncited_sentences(answer) if n and NOT_FOUND.lower() not in answer.lower() else [],
         "sources": state["sources"], "trace": state["trace"],
         "answered": NOT_FOUND.lower() not in answer.lower(),
+        "stats": {"total_ms": round((time.perf_counter() - t_start) * 1000), "llm_calls": state["llm_calls"],
+                  "llm_ms": round(state["llm_ms"]), "tokens": state["tokens"], "steps": state["steps"]},
     }
+    log_trace(result)
+    return result

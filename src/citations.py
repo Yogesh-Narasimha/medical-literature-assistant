@@ -26,6 +26,11 @@ def strip_invalid(answer: str, n_sources: int) -> str:
     return _CITE.sub(lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", answer)
 
 
+def strip_markers(answer: str) -> str:
+    """The answer text with every [n] marker removed (to measure how much real content is left)."""
+    return _CITE.sub("", answer).strip()
+
+
 def uncited_sentences(answer: str) -> list[str]:
     """Factual-looking sentences with no [n] marker, so the UI can flag them as unverified.
 
@@ -37,8 +42,9 @@ def uncited_sentences(answer: str) -> list[str]:
         paragraph = _LEADING_CITE.sub(r"\1\2", paragraph)   # attach a marker to the sentence before it
         sentences = [s.strip(" -*•") for s in _SENTENCE.split(paragraph) if s.strip(" -*•")]
         last_cited = max((i for i, s in enumerate(sentences) if _CITE.search(s)), default=-1)
+        leading = bool(sentences) and bool(re.match(r"\s*(?:\[\d+\])+", sentences[0]))
         for i, s in enumerate(sentences):
-            covered = i <= last_cited
+            covered = i <= last_cited or leading   # a leading [n] ("[1] Sentence. Sentence.") covers its paragraph
             if len(s) > 40 and not covered and not _FRAMING.search(s):
                 out.append(s)
     return out

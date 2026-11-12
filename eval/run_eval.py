@@ -63,7 +63,7 @@ def _score_retriever(name, retriever, items, ks):
     for label, ranks in (("strict", strict), ("relaxed", relaxed)):
         row = {f"R@{k}": sum(1 for x in ranks if x and x <= k) / len(items) for k in ks}
         row["MRR"] = sum(1 / x for x in ranks if x) / len(items)
-        print(f"  {name:10} {label:7} " + "  ".join(f"{m}={v:.2f}" for m, v in row.items()))
+        print(f"  {name:11} {label:7} " + "  ".join(f"{m}={v:.2f}" for m, v in row.items()))
     return strict
 
 
@@ -72,13 +72,16 @@ def eval_retrieval(ks=(1, 3, 5)):
     from src.retrieval.hybrid import BM25Retriever, HybridRetriever
     dense = DenseRetriever()
     final = HybridRetriever(dense, drug_boost=0.01)
-    retrievers = {"dense": dense, "bm25": BM25Retriever(dense.chunks), "hybrid": HybridRetriever(dense),
-                  "hyb+drug": final, "hyb+corr": _CorrectiveAdapter(final)}
+    from src.retrieval.rerank import RerankedRetriever
+    plain_hybrid = HybridRetriever(dense)
+    retrievers = {"dense": dense, "bm25": BM25Retriever(dense.chunks), "hybrid": plain_hybrid,
+                  "hyb+drug": final, "hyb+corr": _CorrectiveAdapter(final),
+                  "hyb+rerank": RerankedRetriever(plain_hybrid), "drug+rerank": RerankedRetriever(final)}
     items = [i for i in load() if i["drug"]]
     print(f"Retrieval over {len(items)} in-scope questions")
     all_ranks = {n: _score_retriever(n, r, items, ks) for n, r in retrievers.items()}
     print()
-    print("Per question rank (dense / bm25 / hybrid / hybrid+drug-boost):")
+    print("Per question strict rank (" + " / ".join(retrievers) + "):")
     for i, it in enumerate(items):
         print("  " + " / ".join(f"{all_ranks[n][i]!s:>4}" for n in retrievers) + f"   {it['q']}")
 

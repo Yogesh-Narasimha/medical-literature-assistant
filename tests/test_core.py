@@ -256,3 +256,107 @@ def test_check_interaction_placeholder_second_drug_falls_back(tools):
     for placeholder in ("nil", "any other drug", "none"):
         sources, _ = tools.check_interaction("warfarin", placeholder)
         assert sources and sources[0]["section"] == "drug_interactions"
+
+
+# ------------------------------------------------------------------ reranker
+def test_reranker_reorders_but_keeps_dense_scores():
+    from src.retrieval.rerank import RerankedRetriever
+
+    class Base:
+        def search(self, q, k):
+            return [Hit(0.90, chunk("a#s#0", "irrelevant text")), Hit(0.70, chunk("b#s#0", "the real answer"))]
+
+    class FakeCrossEncoder:
+        def predict(self, pairs, show_progress_bar=False):
+            return [0.1 if "irrelevant" in text else 5.0 for _, text in pairs]
+
+    rr = RerankedRetriever(Base())
+    rr._model = FakeCrossEncoder()
+    hits = rr.search("q", 2)
+    assert [h.chunk["chunk_id"] for h in hits] == ["b#s#0", "a#s#0"]       # cross-encoder order wins
+    assert [h.score for h in hits] == [0.70, 0.90]                         # dense cosine preserved for thresholds
+    assert RerankedRetriever(type("E", (), {"search": lambda s, q, k: []})()).search("q", 3) == []
+
+
+# ------------------------------------------------------- coverage check (absent drugs)
+@pytest.fixture
+def coverage(monkeypatch, tools):
+    from src.agent import coverage as cov
+    monkeypatch.setattr(cov, "_labels", lambda: {"warfarin": {}, "ibuprofen": {}, "metformin": {}})
+    monkeypatch.setattr(cov, "_covered_terms", lambda: {"warfarin", "ibuprofen", "metformin",
+                                                        "metformin and digestive disorders"})
+    return cov
+
+
+def test_missing_subject_refuses_only_when_no_named_drug_is_covered(coverage, monkeypatch):
+    def with_names(names):
+        monkeypatch.setattr(coverage, "extract_drugs", lambda q: names)
+        return coverage.missing_subject("q")
+    assert with_names(["lithium"]) == ["lithium"]                      # only an absent drug: refuse
+    assert with_names(["lithium", "ibuprofen"]) == []                  # a covered drug is named: proceed
+    assert with_names(["vitamin b12", "metformin"]) == []
+    assert with_names([]) == []                                        # nothing extracted: fail open
+
+
+def test_extract_drugs_drops_names_the_model_invented(coverage, monkeypatch):
+    class FakeClient:
+        def chat(self, **kw):
+            return {"message": {"content": "Aspirin, Ibuprofen"}}
+    monkeypatch.setattr(coverage, "_client", FakeClient())
+    assert coverage.extract_drugs("What painkiller is safest for my stomach ulcer?") == []
+    assert coverage.extract_drugs("Is ibuprofen safe?") == ["ibuprofen"]
+
+
+def test_is_covered_uses_labels_brands_classes_and_titles(coverage):
+    assert coverage.is_covered("warfarin") and coverage.is_covered("blood thinner")
+    assert not coverage.is_covered("lithium")
+
+
+def test_check_interaction_unlabelled_drug_searches_the_other_label(tools):
+    # "lithium" has no label: report what the warfarin label says about it, or say nothing is known
+    tools._labels()["warfarin"]["sections"]["drug_interactions"] += " Lithium levels may change."
+    sources, info = tools.check_interaction("warfarin", "lithium")
+    assert sources and "Lithium" in sources[0]["text"] and info == ""
+    sources, info = tools.check_interaction("ibuprofen", "lithium")        # ibuprofen label never mentions it
+    assert sources == [] and "no label for lithium" in info and "Do not assume" in info
+
+
+def test_citation_repair_that_loses_the_content_is_rejected(monkeypatch):
+    from src.agent import graph
+
+    class Client:
+        def __init__(self, reply):
+            self.reply = reply
+
+        def chat(self, **kw):
+            return {"message": {"content": self.reply}}
+
+    original = "The boxed warning says metformin can cause lactic acidosis, a rare but serious complication."
+    monkeypatch.setattr(graph, "_client", Client("[1]"))                     # degenerate repair
+    assert graph._add_citations([{"role": "user", "content": "q"}, {"role": "assistant", "content": original}],
+                                original, 1) == original
+    good = "The boxed warning says metformin can cause lactic acidosis, a rare but serious complication [1]."
+    monkeypatch.setattr(graph, "_client", Client(good))                      # a real repair is accepted
+    assert graph._add_citations([{"role": "user", "content": "q"}, {"role": "assistant", "content": original}],
+                                original, 1) == good
+
+
+def test_leading_marker_covers_its_paragraph():
+    from src.citations import uncited_sentences
+    leading = ("[1] The boxed warning says metformin can cause lactic acidosis, a rare complication. "
+               "Symptoms include malaise, muscle pain and trouble breathing in affected patients.")
+    assert uncited_sentences(leading) == []
+    midway = ("Metformin can cause lactic acidosis, a rare complication of treatment [1]. "
+              "Symptoms include malaise, muscle pain and trouble breathing in affected patients.")
+    assert uncited_sentences(midway) == [
+        "Symptoms include malaise, muscle pain and trouble breathing in affected patients."]
+
+
+def test_normalize_drug_handles_missing_and_and_misspellings(tools, monkeypatch):
+    labels = tools._labels()
+    labels["sacubitril and valsartan"] = {"sections": {}, "brand_names": []}
+    assert tools.normalize_drug("sacubitril valsartan") == "sacubitril and valsartan"
+    assert tools.normalize_drug("Sacubitril/Valsartan") == "sacubitril and valsartan"
+    assert tools.normalize_drug("ibuprofin") == "ibuprofen"                    # close spelling
+    assert tools.normalize_drug("lithium") == "lithium"                        # genuinely unknown stays unknown
+    assert tools.normalize_drug("blood thinner") == "blood thinner"            # classes are left alone

@@ -11,7 +11,7 @@ import math
 import re
 from collections import Counter
 
-from src.config import TOP_K
+from src.config import TOP_K, USE_RERANKER
 from src.retrieval.dense import DenseRetriever, Hit
 
 RRF_K = 60
@@ -90,6 +90,15 @@ class HybridRetriever:
         return [Hit(dense_score.get(cid, 0.0), by_id[cid].chunk) for cid in top]
 
 
-def default_retriever() -> HybridRetriever:
-    """The retriever used by the agent and CLI: hybrid BM25 + dense with a drug-aware rerank."""
-    return HybridRetriever(drug_boost=DRUG_BOOST)
+def default_retriever():
+    """The retriever used by the agent and CLI: hybrid BM25 + dense with a drug-aware boost, then (if
+    USE_RERANKER and torch are available) a cross-encoder reorders the top candidates."""
+    retriever = HybridRetriever(drug_boost=DRUG_BOOST)
+    if USE_RERANKER:
+        try:
+            import sentence_transformers  # noqa: F401  (also pulls in torch)
+            from src.retrieval.rerank import RerankedRetriever
+            return RerankedRetriever(retriever)
+        except ImportError:
+            pass          # no torch installed: run without the cross-encoder
+    return retriever

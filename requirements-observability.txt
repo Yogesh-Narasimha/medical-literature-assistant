@@ -1,0 +1,3 @@
+# Optional: LangFuse export of agent traces (set LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST).
+# Local JSONL tracing (data/traces) works without this.
+langfuse>=4,<5
