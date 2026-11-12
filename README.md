@@ -84,11 +84,16 @@ python -m pytest -q          # 41 unit tests, no Ollama or index needed (chunkin
 The tests were checked by deliberately breaking the code (the hybrid fusion key and the out-of-domain
 refusal): the matching tests failed, then passed again once the code was restored.
 
-## Docker (written but not tested)
+## Docker (image not built; its commands were tested)
 
 `Dockerfile` and `docker-compose.yml` run Ollama, the API (`:8000`) and the UI (`:8501`) as services. I could
-not build or run them because Docker is not installed on my development machine, so treat them as an
-untested starting point. The commands to pull models and build the index are in the compose file header.
+not build the image or run `docker compose`: Docker Desktop needs admin rights and WSL2, neither of which my
+development machine has in this session. What I did test, outside Docker: a fresh clone of the repo installs
+from `requirements.txt` in a clean virtual environment and passes the tests; the exact container commands
+(`uvicorn src.api:app --host 0.0.0.0 --port 8000` with `OLLAMA_HOST` set, and `streamlit run app.py
+--server.address 0.0.0.0 --server.port 8501`) start, answer `/ask`, and serve the page. Not tested: the image
+build itself, the volume mounts and the service networking, so treat the Docker files as an unverified starting
+point. The commands to pull models and build the index are in the compose file header.
 
 ## Results
 
@@ -125,18 +130,19 @@ label section; *relaxed* also counts a PubMed abstract on the topic (only 4 ques
 | Metric | Score |
 |---|---|
 | Tool routing vs. gold (43 in-scope) | 0.95 |
-| Answers with citations | 0.98 |
-| All citations valid | 0.98 |
-| Answers citing a gold source | 0.91 |
+| Answers with citations | 1.00 |
+| All citations valid | 1.00 |
+| Answers citing a gold source | 0.95 |
 | Out-of-scope refusal (7) | 1.00 |
 
-From the run traces of that eval (50 runs, RTX 3050 laptop GPU): median latency 4.2 s, p95 12.9 s, about
-1.9 LLM calls and 2,200 tokens per question, 4% of runs triggered a corrective query rewrite, and 11 of 50
+From the run traces of that eval (50 runs, RTX 3050 laptop GPU): median latency 4.8 s, p95 12.5 s, about
+1.9 LLM calls and 2,200 tokens per question, 4% of runs triggered a corrective query rewrite, and 13 of 50
 runs had at least one statement flagged as uncited. That flag is a heuristic (a citation at the start or end
 of a paragraph covers it) and still fires on benign conclusion sentences, so read it as "check this", not
-"this is wrong". One in-scope question was left without a citation in that run (the sacubitril/valsartan
-boxed warning, because the model wrote the drug name without "and"); fuzzy drug-name matching was added
-afterwards and a unit test covers it, but the eval was not re-run after that fix.
+"this is wrong". An earlier run of the same eval had one in-scope answer without a citation (the model wrote
+"sacubitril valsartan" without "and" and the lookup failed); fuzzy drug-name matching fixed it and this table
+is from a full re-run after that fix. The LLM is not perfectly repeatable between runs (GPU arithmetic), so a
+difference of one question between two runs is noise.
 
 How it got here: with the first tool descriptions the 3B model always picked `lookup_drug_label` and never
 `search_documents` (routing 0.50, PubMed unused); rewriting the prompt raised routing to 0.88. Adding hybrid
@@ -235,7 +241,7 @@ eval/                    questions.jsonl + run_eval.py
 - [x] Days 6–7: embedding fine-tuning experiment, measured (did not beat nomic-embed-text; see results)
 - [x] Day 8 (part): corrective RAG (grade, rewrite, refuse), Streamlit UI
 - [x] Day 8 (rest): run tracing (local JSON + optional LangFuse export, tested against a stand-in server)
-- [ ] Not done: build and run the Docker setup (no Docker on my machine); validate on a larger, independently written question set
+- [ ] Not done: build and run the Docker image (needs admin + WSL2, unavailable here); validate on a larger, independently written question set
 
 ## Disclaimer
 
