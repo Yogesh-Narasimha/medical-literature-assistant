@@ -13,6 +13,8 @@ def show(r: dict):
     print(f"\nQ: {r['question']}\n")
     for t in r["trace"]:
         print(f"  tool: {t['tool']}({t['args']}) -> {t['n_results']} sources")
+        if t.get("note"):
+            print(f"        note: {t['note']}")
     print(f"\n{r['answer']}\n")
     if r["cited"]:
         print("Sources:")

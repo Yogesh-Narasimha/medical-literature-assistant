@@ -8,6 +8,7 @@ import re
 from functools import lru_cache
 
 from src.config import LABEL_SECTIONS, LABEL_SNIPPET_CHARS, RAW_DIR
+from src.retrieval.corrective import corrective_search
 from src.retrieval.hybrid import HybridRetriever, default_retriever
 
 _retriever: HybridRetriever | None = None
@@ -27,19 +28,58 @@ def _labels() -> dict[str, dict]:
     return {r["drug"].lower(): r for r in recs}
 
 
+# Brand and lay names -> the generic names used as keys in the label store.
+SYNONYMS = {
+    "paracetamol": "acetaminophen", "tylenol": "acetaminophen", "panadol": "acetaminophen",
+    "coumadin": "warfarin", "jantoven": "warfarin", "eliquis": "apixaban", "plavix": "clopidogrel",
+    "advil": "ibuprofen", "motrin": "ibuprofen", "aleve": "naproxen", "glucophage": "metformin",
+    "januvia": "sitagliptin", "jardiance": "empagliflozin", "lantus": "insulin glargine",
+    "lipitor": "atorvastatin", "crestor": "rosuvastatin", "norvasc": "amlodipine", "zestril": "lisinopril",
+    "prinivil": "lisinopril", "cozaar": "losartan", "lopressor": "metoprolol", "toprol": "metoprolol",
+    "prilosec": "omeprazole", "nexium": "omeprazole", "protonix": "pantoprazole", "synthroid": "levothyroxine",
+    "deltasone": "prednisone", "cipro": "ciprofloxacin", "zithromax": "azithromycin", "vibramycin": "doxycycline",
+    "zoloft": "sertraline", "prozac": "fluoxetine", "lexapro": "escitalopram", "wellbutrin": "bupropion",
+    "xanax": "alprazolam", "neurontin": "gabapentin", "keppra": "levetiracetam", "singulair": "montelukast",
+    "ventolin": "albuterol", "proair": "albuterol", "zyrtec": "cetirizine", "lasix": "furosemide",
+    "aldactone": "spironolactone", "entresto": "sacubitril and valsartan", "ultram": "tramadol",
+    "aspirin": "aspirin", "bayer": "aspirin",
+}
+
+
+@lru_cache(maxsize=1)
+def _brand_index() -> dict[str, str]:
+    """Brand names that appear in the downloaded labels themselves (lowercase brand -> generic)."""
+    idx = {}
+    for generic, rec in _labels().items():
+        for b in rec.get("brand_names", []):
+            idx.setdefault(b.lower(), generic)
+    return idx
+
+
+def normalize_drug(name: str | None) -> str:
+    """Map a brand/lay/misspelt-case drug name to the generic key used by the label store."""
+    n = str(name or "").strip().lower()
+    if n in _labels():
+        return n
+    return SYNONYMS.get(n) or _brand_index().get(n) or n
+
+
 def search_documents(query: str) -> tuple[list[dict], str]:
     """Semantic search over FDA label sections and PubMed abstracts."""
-    hits = get_retriever().search(query, 5)
+    hits, correction = corrective_search(query, get_retriever(), 5)
     sources = [{
         "key": h.chunk["chunk_id"], "title": h.chunk["title"], "section": h.chunk["section"],
         "url": h.chunk.get("url", ""), "text": h.chunk["text"], "score": round(h.score, 3),
     } for h in hits]
-    return sources, "No results."
+    if not sources:
+        return [], ("No relevant documents were found for this query, even after rewriting it "
+                    f"({correction.note()}). Tell the user you could not find this in the indexed documents.")
+    return sources, correction.note()
 
 
 def lookup_drug_label(drug: str, section: str = "drug_interactions") -> tuple[list[dict], str]:
     """Exact lookup of one section of one drug's FDA label."""
-    rec = _labels().get(str(drug or "").strip().lower())
+    rec = _labels().get(normalize_drug(drug))
     if rec is None:
         return [], f"No label for '{drug}'. Available drugs: {', '.join(sorted(_labels()))}"
     section = str(section or "drug_interactions").strip().lower()
@@ -89,7 +129,7 @@ def check_interaction(drug_a: str, drug_b: str) -> tuple[list[dict], str]:
     if not drug_a or not drug_b:
         # Only one drug named: show that drug's interactions section instead.
         return lookup_drug_label(drug_a or drug_b or "", "drug_interactions")
-    a, b = str(drug_a).strip().lower(), str(drug_b).strip().lower()
+    a, b = normalize_drug(drug_a), normalize_drug(drug_b)
     labels, sources = _labels(), []
     for me, other in ((a, b), (b, a)):
         if me not in labels:
@@ -97,7 +137,7 @@ def check_interaction(drug_a: str, drug_b: str) -> tuple[list[dict], str]:
         rec = labels[me]
         terms = ALIASES.get(other, [other]) + [x.lower() for x in labels.get(other, {}).get("brand_names", [])]
         sources += _mentions(rec, terms)
-    return sources, f"Neither label mentions {a} or {b} with respect to the other."
+    return sources, "" if sources else f"Neither label mentions {a} or {b} with respect to the other."
 
 
 TOOL_FUNCS = {"search_documents": search_documents, "lookup_drug_label": lookup_drug_label,

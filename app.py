@@ -37,3 +37,5 @@ if question:
     with st.expander("Agent steps (ReAct trace)"):
         for t in r["trace"]:
             st.code(f"{t['tool']}({t['args']}) -> {t['n_results']} sources")
+            if t.get("note"):
+                st.caption(f"Corrective RAG: {t['note']}")

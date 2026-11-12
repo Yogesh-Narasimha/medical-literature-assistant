@@ -30,24 +30,50 @@ def is_gold(item: dict, drug: str, section: str) -> bool:
     return item["drug"] == drug and section in item["sections"]
 
 
+def is_gold_chunk(item: dict, chunk: dict, relaxed: bool) -> bool:
+    """Strict: the expected drug's label section. Relaxed: also a PubMed abstract on the topic
+    (item["kw"]: all terms must appear), because a topical abstract is a legitimate source."""
+    if is_gold(item, chunk.get("drug"), chunk["section"]):
+        return True
+    return bool(relaxed and item.get("kw") and chunk["source_type"] == "pubmed"
+                and all(t in chunk["text"].lower() for t in item["kw"]))
+
+
+class _CorrectiveAdapter:
+    """Lets the corrective-RAG pipeline be scored like any other retriever."""
+
+    def __init__(self, retriever):
+        self.retriever = retriever
+
+    def search(self, query, k):
+        from src.retrieval.corrective import corrective_search
+        return corrective_search(query, self.retriever, k)[0]
+
+
+def _first_rank(item, hits, relaxed):
+    return next((n for n, h in enumerate(hits, 1) if is_gold_chunk(item, h.chunk, relaxed)), None)
+
+
 def _score_retriever(name, retriever, items, ks):
-    ranks = []
+    strict, relaxed = [], []
     for it in items:
         hits = retriever.search(it["q"], max(ks))
-        ranks.append(next((n for n, h in enumerate(hits, 1)
-                           if is_gold(it, h.chunk.get("drug"), h.chunk["section"])), None))
-    row = {f"Recall@{k}": sum(1 for x in ranks if x and x <= k) / len(items) for k in ks}
-    row["MRR"] = sum(1 / x for x in ranks if x) / len(items)
-    print(f"  {name:8} " + "  ".join(f"{m}={v:.2f}" for m, v in row.items()))
-    return ranks
+        strict.append(_first_rank(it, hits, False))
+        relaxed.append(_first_rank(it, hits, True))
+    for label, ranks in (("strict", strict), ("relaxed", relaxed)):
+        row = {f"R@{k}": sum(1 for x in ranks if x and x <= k) / len(items) for k in ks}
+        row["MRR"] = sum(1 / x for x in ranks if x) / len(items)
+        print(f"  {name:10} {label:7} " + "  ".join(f"{m}={v:.2f}" for m, v in row.items()))
+    return strict
 
 
 def eval_retrieval(ks=(1, 3, 5)):
     from src.retrieval.dense import DenseRetriever
     from src.retrieval.hybrid import BM25Retriever, HybridRetriever
     dense = DenseRetriever()
+    final = HybridRetriever(dense, drug_boost=0.01)
     retrievers = {"dense": dense, "bm25": BM25Retriever(dense.chunks), "hybrid": HybridRetriever(dense),
-                  "hyb+drug": HybridRetriever(dense, drug_boost=0.01)}
+                  "hyb+drug": final, "hyb+corr": _CorrectiveAdapter(final)}
     items = [i for i in load() if i["drug"]]
     print(f"Retrieval over {len(items)} in-scope questions")
     all_ranks = {n: _score_retriever(n, r, items, ks) for n, r in retrievers.items()}

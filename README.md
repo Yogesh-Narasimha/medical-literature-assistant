@@ -62,42 +62,54 @@ citations are flagged in the CLI, API and UI.
 
 Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`, then rebuild the index.
 
-## Results (qwen2.5:3b + nomic-embed-text, 1,837 chunks, 16 in-scope + 3 out-of-scope questions)
+## Results (qwen2.5:3b + nomic-embed-text, 1,837 chunks, 19 in-scope + 3 out-of-scope questions)
 
-### Retrieval: dense vs. BM25 vs. hybrid (`python -m eval.run_eval retrieval`)
+The question set is small, so treat a one-question difference (about 0.05) as noise. *Strict* counts only the
+expected FDA label section; *relaxed* also counts a PubMed abstract on the topic (a legitimate source that the
+strict gold labels ignore; only 4 questions carry topic keywords for this).
 
-| Retriever | Recall@1 | Recall@3 | Recall@5 | MRR |
-|---|---|---|---|---|
-| Dense (nomic-embed-text) | 0.50 | 0.75 | 0.75 | 0.61 |
-| BM25 | 0.50 | 0.62 | 0.69 | 0.57 |
-| Hybrid (BM25 + dense, RRF) | 0.38 | 0.75 | 0.81 | 0.56 |
-| **Hybrid + drug-aware rerank** (used) | **0.62** | **0.75** | **0.88** | **0.72** |
+### Retrieval (`python -m eval.run_eval retrieval`)
 
-Plain hybrid raised Recall@5 but hurt the top result; boosting chunks of any drug named in the query
-fixed that and recovered questions dense search missed entirely (warfarin interactions). Caveat: the gold
-labels are defined by drug, so this boost is partly aligned with what the metric rewards, and the set is
-small (16 questions), so treat differences of one question (about 0.06) as noise. A cross-encoder reranker
-is not included: it needs PyTorch and a model download.
+| Retriever | Recall@1 strict / relaxed | Recall@5 strict / relaxed | MRR strict / relaxed |
+|---|---|---|---|
+| Dense (nomic-embed-text) | 0.47 / 0.68 | 0.74 / 0.89 | 0.60 / 0.79 |
+| BM25 | 0.42 / 0.63 | 0.58 / 0.74 | 0.48 / 0.67 |
+| Hybrid (BM25 + dense, RRF) | 0.37 / 0.58 | 0.79 / 0.95 | 0.54 / 0.73 |
+| **Hybrid + drug-aware rerank** (used) | **0.58 / 0.68** | **0.84 / 0.95** | **0.68 / 0.79** |
+| + corrective RAG | 0.58 / 0.68 | 0.84 / 0.95 | 0.68 / 0.80 |
+
+Plain hybrid raised Recall@5 but hurt the top result; boosting chunks of any drug named in the query fixed
+that (for example warfarin interaction questions that dense search missed). Caveat: the gold labels are defined
+by drug, so this boost is partly aligned with what the metric rewards. Corrective RAG barely changes these
+numbers because most questions already grade as "correct" and never trigger a rewrite; its value shows on
+lay-language questions and out-of-domain refusals. A cross-encoder reranker is not included (it needs PyTorch
+and a model download).
 
 ### Agent (`python -m eval.run_eval agent`)
 
 | Metric | Score |
 |---|---|
-| Answers with citations | 1.00 |
-| Answers citing a gold source | 0.88 |
-| All citations valid | 0.88 |
+| Tool routing vs. gold | 0.89 |
+| Answers with citations | 0.95 |
+| All citations valid | 0.84 |
+| Answers citing a gold source | 0.84 |
 | Out-of-scope refusal | 1.00 (3/3) |
-| Tool routing vs. gold | 0.88 |
 
-How it got here: with the first tool descriptions the 3B model always picked `lookup_drug_label` and
-never `search_documents` (routing 0.50, PubMed unused). Rewriting the prompt so label lookup is only for
-named sections raised routing to 0.88 and citations to 1.00. Swapping dense for the hybrid retriever
-then raised "cites a gold source" from 0.81 to 0.88. The refusal threshold (0.65) sits in the measured
-gap between out-of-scope (max 0.57) and in-scope (min 0.75) top-1 dense scores. Each agent answer takes
-1-2 minutes on a laptop CPU.
+How it got here: with the first tool descriptions the 3B model always picked `lookup_drug_label` and never
+`search_documents` (routing 0.50, PubMed unused). Rewriting the prompt raised routing to 0.88; the hybrid
+retriever raised "cites a gold source" from 0.81 to 0.88 (on the original 16 questions). Adding three
+lay-language questions (brand names, "blood thinner") lowered the aggregate slightly (citations 1.00 -> 0.95:
+the "Tylenol with a blood thinner" answer came back without a citation). Corrective RAG grades retrieval by
+similarity score, rewrites ambiguous queries into label terminology, and refuses without rewriting when
+retrieval is clearly off-topic (an early version let the rewriter turn "fix a flat tire" into a drug query).
+A drug-name normalizer maps brand and lay names (Tylenol, paracetamol, Coumadin) to the generic names the label
+tools use. The refusal threshold (0.65) sits in the measured gap between out-of-scope (max 0.57) and in-scope
+(min 0.66) top-1 dense scores, a narrow margin on the lay-language questions. Each agent answer takes 1-2
+minutes on a laptop CPU.
 
-Known weak spots: ciprofloxacin and long-term PPI risk questions are still missed by every retriever, and
-some answers still carry an invalid `[n]` (flagged in the CLI, API and UI).
+Known weak spots: ciprofloxacin and PPI risk questions still miss under the strict metric (the cipro label
+openFDA returned is short and has no boxed warning); "what painkiller is safest for a stomach ulcer" retrieves
+nothing gold; some answers still carry an invalid `[n]` (flagged in the CLI, API and UI).
 
 ## Project structure
 
@@ -106,7 +118,7 @@ src/
   config.py              all settings (models, chunk size, drug list)
   data/                  downloaders for openFDA and PubMed
   ingest/                chunking and index building
-  retrieval/             embedder, dense retriever, BM25 + hybrid retriever
+  retrieval/             embedder, dense retriever, BM25 + hybrid retriever, corrective RAG
   generation/            plain RAG answer with citations
   agent/                 LangGraph ReAct agent and its tools
   api.py                 FastAPI backend
@@ -123,7 +135,8 @@ eval/                    questions.jsonl + run_eval.py
 - [x] Day 4: evaluation harness (Recall@k, MRR, tool routing, citation validity, refusals)
 - [x] Day 5: hybrid search (BM25 + dense, RRF) with a drug-aware rerank, measured (cross-encoder still open)
 - [ ] Days 6–7: fine-tuned biomedical embedding model, measured
-- [ ] Day 8: corrective RAG, LangFuse tracing, Streamlit UI
+- [x] Day 8 (part): corrective RAG (grade, rewrite, refuse), Streamlit UI
+- [ ] Day 8 (rest): LangFuse tracing
 
 ## Disclaimer
 

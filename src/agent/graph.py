@@ -74,7 +74,8 @@ def tools_node(state: State) -> dict:
                 sources.append(s)
                 idx = len(sources) - 1
             lines.append(f"[{idx + 1}] {s['title']} [{s['section']}]\n{s['text']}")
-        trace.append({"tool": name, "args": args, "n_results": len(new)})
+        # `info` is "" for plain successes, a corrective-RAG note ("query rewritten to ...") or an error message
+        trace.append({"tool": name, "args": args, "n_results": len(new), "note": info})
         messages.append({"role": "tool", "content": "\n\n".join(lines) or info, "tool_name": name})
     return {"messages": messages, "sources": sources, "trace": trace}
 
