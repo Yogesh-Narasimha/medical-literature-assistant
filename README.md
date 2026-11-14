@@ -261,6 +261,27 @@ tests/                   unit tests
 eval/                    questions.jsonl + run_eval.py
 ```
 
+## What would change at production scale
+
+This is a local portfolio project (1,837 chunks, a few dozen drugs, one laptop GPU). These are the gaps I would
+close before anything like it served real users; none of them is built here.
+
+- **Scale:** FAISS in memory is fine for thousands of chunks. For millions, use an approximate index (IVF/HNSW)
+  or a vector database, and move BM25 to a real search engine instead of my in-process implementation.
+- **Freshness:** labels and abstracts are downloaded once. A real system needs scheduled re-ingestion, versioned
+  indexes, and answers that show the label's effective date, since labels change when new safety data appears.
+- **Evaluation validity:** my question sets are small and written by me. I would use questions written by
+  pharmacists or clinicians, a larger set so one question does not move a metric by 0.02-0.06, and regression
+  runs on every change.
+- **Answer faithfulness:** citation checks confirm that a cited source exists, not that it supports the
+  sentence. A production system would add a claim-level entailment check and human review of a sample.
+- **Model:** a 3B local model phrases things loosely. A larger or hosted model (or a larger GPU) might change the
+  3B-vs-7B result measured above; that would need re-measuring, along with cost and data-privacy review.
+- **Safety and governance:** this is not a medical device. Clinical use would need regulatory review, audit
+  logging, access control, and a clear path to escalate to a human.
+- **Operations:** the API has no authentication, rate limiting or monitoring beyond local trace files; the Docker
+  image has not been built.
+
 ## Roadmap
 
 - [x] Day 1: data download, chunking, embeddings, FAISS retrieval
