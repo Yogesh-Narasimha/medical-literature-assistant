@@ -42,8 +42,8 @@ User question -> embed query -> top-k similar chunks -> (Day 2+) LLM answer with
 ## Run (from the project root)
 
 ```bash
-python -m src.data.fetch_openfda     # ~300 FDA drug labels (see DRUGS in src/config.py)
-python -m src.data.fetch_pubmed      # ~1,900 PubMed abstracts (79 queries)
+python -m src.data.fetch_openfda     # ~750 FDA drug labels (see DRUGS in src/config.py); --resume keeps what is on disk
+python -m src.data.fetch_pubmed      # ~4,700 PubMed abstracts (196 queries)
 python -m src.ingest.chunk           # -> data/processed/chunks.jsonl
 python -m src.ingest.build_index     # -> data/index/
 python -m scripts.search "Can I take ibuprofen with warfarin?"   # retrieval only
@@ -77,7 +77,7 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 55 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
+python -m pytest -q          # 57 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
                              # citation checks, coverage check, drug-name matching, tracing, train/test split)
 ```
 
@@ -98,34 +98,36 @@ point. The commands to pull models and build the index are in the compose file h
 ## Results
 
 Setup: qwen2.5:3b + nomic-embed-text. The project was first built and measured on **40 drugs / 1,837 chunks**,
-then scaled to **298 drugs / 1,907 PubMed abstracts / 17,693 chunks** (about 10x) to see what breaks; the tables
-below show both, and everything after "Scaling" is on the 298-drug index. **Question set 1**
-(`eval/questions.jsonl`): 43 in-scope + 7 out-of-scope hand-written questions; the out-of-scope set includes two
-medical questions about drugs that are not in the index (lithium, adalimumab). **Question set 2**
-(`eval/questions_set2.jsonl`): 16 + 3 questions about other drugs, written later and evaluated once before I
-changed anything. **Adversarial set** (`eval/adversarial.jsonl`): 31 questions written to break the assistant.
-All three sets were written by me, not by an independent person, and I fixed bugs that sets 2 and the adversarial
-set exposed, so only each set's first run is a clean held-out result. With these sizes one question is about
-0.02-0.06, so treat differences of one or two questions as noise; the LLM also varies slightly between runs.
+then scaled twice to see what breaks: **298 drugs / 17,693 chunks**, then **744 drugs / 4,747 PubMed abstracts /
+39,118 chunks** (21x the original). The tables show all three; "final" means the 744-drug index and the final
+code. **Question set 1** (`eval/questions.jsonl`): 43 in-scope + 7 out-of-scope hand-written questions; the
+out-of-scope set includes two medical questions about drugs that have no label in the index (lithium, adalimumab).
+**Question set 2** (`eval/questions_set2.jsonl`): 16 + 3 questions about other drugs, written later and evaluated
+once before I changed anything. **Adversarial set** (`eval/adversarial.jsonl`): 31 questions written to break the
+assistant. All three sets were written by me, not by an independent person, and I fixed bugs that set 2 and the
+adversarial set exposed, so only each set's first run is a clean held-out result. With these sizes one question is
+about 0.02-0.06, so treat differences of one or two questions as noise; the LLM also varies slightly between runs.
 *Strict* counts only the expected FDA label section; *relaxed* also counts a PubMed abstract on the topic (only 4
 questions carry topic keywords).
 
 ### Retrieval (`python -m eval.run_eval retrieval`)
 
-| Retriever | 40 drugs: R@1 / R@5 / MRR (strict) | 298 drugs: R@1 / R@5 / MRR (strict) | 298 drugs, relaxed |
-|---|---|---|---|
-| Dense (nomic-embed-text) | 0.53 / 0.79 / 0.65 | 0.42 / 0.70 / 0.53 | 0.49 / 0.74 / 0.60 |
-| BM25 | 0.58 / 0.72 / 0.62 | 0.51 / 0.72 / 0.59 | 0.58 / 0.77 / 0.65 |
-| Hybrid (BM25 + dense, RRF) | 0.56 / 0.84 / 0.67 | 0.49 / 0.81 / 0.61 | 0.56 / 0.86 / 0.68 |
-| Hybrid + drug-aware boost | 0.70 / 0.86 / 0.76 | 0.67 / 0.86 / 0.75 | 0.72 / 0.88 / 0.79 |
-| + corrective RAG | 0.70 / 0.86 / 0.76 | 0.67 / 0.86 / 0.75 | 0.72 / 0.88 / 0.79 |
-| Hybrid + cross-encoder rerank | 0.74 / 0.84 / 0.78 | 0.70 / 0.86 / 0.76 | 0.77 / 0.93 / 0.83 |
-| **Hybrid + drug boost + cross-encoder (used)** | **0.77 / 0.86 / 0.81** | **0.70 / 0.86 / 0.76** | **0.77 / 0.93 / 0.83** |
+| Retriever (strict R@1 / R@5 / MRR) | 40 drugs | 298 drugs | 744 drugs | 744 drugs, relaxed |
+|---|---|---|---|---|
+| Dense (nomic-embed-text) | 0.53 / 0.79 / 0.65 | 0.42 / 0.70 / 0.53 | 0.37 / 0.70 / 0.50 | 0.44 / 0.74 / 0.57 |
+| BM25 | 0.58 / 0.72 / 0.62 | 0.51 / 0.72 / 0.59 | 0.51 / 0.72 / 0.59 | 0.58 / 0.77 / 0.64 |
+| Hybrid (BM25 + dense, RRF) | 0.56 / 0.84 / 0.67 | 0.49 / 0.81 / 0.61 | 0.49 / 0.79 / 0.60 | 0.56 / 0.84 / 0.67 |
+| Hybrid + drug-aware boost | 0.70 / 0.86 / 0.76 | 0.67 / 0.86 / 0.75 | 0.65 / 0.86 / 0.74 | 0.70 / 0.88 / 0.78 |
+| + corrective RAG | 0.70 / 0.86 / 0.76 | 0.67 / 0.86 / 0.75 | 0.65 / 0.86 / 0.74 | 0.70 / 0.88 / 0.78 |
+| Hybrid + cross-encoder rerank | 0.74 / 0.84 / 0.78 | 0.70 / 0.86 / 0.76 | 0.67 / 0.81 / 0.72 | 0.74 / 0.88 / 0.79 |
+| **Hybrid + drug boost + cross-encoder (used)** | **0.77 / 0.86 / 0.81** | **0.70 / 0.86 / 0.76** | **0.70 / 0.88 / 0.76** | **0.77 / 0.93 / 0.83** |
 
-Scaling to 7.5x more drugs cost the plain retrievers a lot (dense MRR 0.65 to 0.53) and the final configuration
-only a little (MRR 0.81 to 0.76, Recall@5 unchanged at 0.86): the drug-aware boost and the reranker are what make
-the system hold up as the index grows. The 40-drug numbers are from the earlier runs of the same code (before the
-brand-name and misspelling changes below); the 298-drug column is the final code.
+Growing the index 18x in drugs cost the plain retrievers a lot (dense MRR 0.65 to 0.50) and the final configuration
+only a little (MRR 0.81 to 0.76; Recall@5 0.86 to 0.88). Neither component is enough alone: at 744 drugs the
+cross-encoder without the drug boost fell to MRR 0.72 and the drug boost without the cross-encoder to 0.74, while
+the two together held 0.76, so the boost and the reranker are what keep the system working as the index grows.
+The 40-drug numbers are from earlier runs of the same pipeline (before the brand-name and misspelling changes
+below); the 298 and 744 columns are the final code.
 
 - Plain hybrid raised Recall@5 but hurt the top result; boosting chunks of any drug named in the query fixed
   that. The cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`, top 20 candidates, GPU) adds a smaller,
@@ -139,24 +141,45 @@ brand-name and misspelling changes below); the 298-drug column is the final code
   wording and refusals.
 - The reranker is switched by `USE_RERANKER` in `src/config.py` and falls back silently if PyTorch is missing.
 
+#### Query speed as the index grew
+
+Timing the first-stage retrieval (no LLM, no reranker; 30 queries after a warm-up, one laptop) found a bottleneck
+that I had introduced myself:
+
+| p50 per query | 17,693 chunks, before the fix | 17,693 chunks, after | 39,118 chunks, after |
+|---|---|---|---|
+| Hybrid retriever (dense + BM25 + drug boost) | 228 ms | 25 ms | 31 ms |
+| BM25 alone | 11.8 ms | 1.6 ms | 3.0 ms |
+| Dense (embed the query + exact FAISS search) | 23 ms | 39 ms | 35 ms |
+
+The hybrid retriever took ten times as long as its two rankers combined. Cause: the brand-name detection (below)
+ran about 1,650 regular-expression searches per query, more than once. It is now a dictionary lookup over the
+query's one- to several-word phrases, cached per query, and BM25 got an inverted index so a query touches only
+the chunks that contain its terms (a test checks the ranking and scores are identical to scoring every chunk).
+Caveats: the dense timings are noisy (some runs overlapped with downloads in the background); the index is an
+exact in-memory FAISS index (120 MB at 39k chunks), which is fine here but would be replaced by an approximate
+index at much larger scale; and end to end, the reranker and the LLM dominate (median answer about 5 s), so the
+retrieval fix matters for headroom, not for what a user sees today. Embedding the 39k chunks took 23.6 minutes
+(about 7 minutes for 17.7k).
+
 ### Agent (`python -m eval.run_eval agent [--questions eval/questions_set2.jsonl]`)
 
 qwen2.5:3b (the default), final code:
 
-| Metric | Set 1, 40 drugs | Set 2, 40 drugs | **Set 1, 298 drugs** | **Set 2, 298 drugs** |
-|---|---|---|---|---|
-| Tool routing vs. gold | 0.95 | 1.00 | 0.95 | 1.00 |
-| Answers with citations | 1.00 | 0.94 | 0.98 | 1.00 |
-| All citations valid | 1.00 | 0.94 | 0.98 | 1.00 |
-| Answers citing a gold source | 0.95 | 0.88 | 0.91 | 0.94 |
-| Out-of-scope refusal | 7/7 | 3/3 | 7/7 | 3/3 |
-| Median / p95 latency (RTX 3050 laptop GPU) | 4.3 s / 13.8 s | 5.0 s / 22.2 s | 4.5 s / 11.8 s | 8.2 s / 27.4 s |
-| Runs with flagged uncited statements | 11 / 50 | 5 / 19 | 13 / 50 | 3 / 19 |
+| Metric | Set 1, 40 drugs | Set 2, 40 drugs | Set 1, 298 | Set 2, 298 | **Set 1, 744** | **Set 2, 744** |
+|---|---|---|---|---|---|---|
+| Tool routing vs. gold | 0.95 | 1.00 | 0.95 | 1.00 | 0.95 | 1.00 |
+| Answers with citations | 1.00 | 0.94 | 0.98 | 1.00 | 0.98 | 1.00 |
+| All citations valid | 1.00 | 0.94 | 0.98 | 1.00 | 0.98 | 1.00 |
+| Answers citing a gold source | 0.95 | 0.88 | 0.91 | 0.94 | 0.88 | 0.94 |
+| Out-of-scope refusal | 7/7 | 3/3 | 7/7 | 3/3 | 7/7 | 3/3 |
+| Median / p95 latency (RTX 3050 laptop GPU) | 4.3 / 13.8 s | 5.0 / 22.2 s | 4.5 / 11.8 s | 8.2 / 27.4 s | 4.9 / 12.7 s | 7.1 / 32.7 s |
+| Runs with flagged uncited statements | 11 / 50 | 5 / 19 | 13 / 50 | 3 / 19 | 12 / 50 | 4 / 19 |
 
-(The 298-drug agent numbers were measured one small tool-argument fix before the final commit, "tegre tol" below;
-retrieval and the adversarial set were re-run after it.) At 298 drugs the agent lost about one question on set 1
-(one more answer without a valid citation, gold-source rate 0.95 to 0.91) and set 2 held; set 2 got slower
-(median 5.0 s to 8.2 s), which I did not investigate.
+Across the 40-to-744-drug scale-up the agent lost about three questions' worth on set 1's gold-source rate
+(0.95 to 0.88), one answer lost its valid citation (1.00 to 0.98), and set 2 held. Set 2 got slower (median 5.0 s to
+7.1 s; p95 22 s to 33 s), which I did not investigate. (The 298-drug agent numbers were measured one small
+tool-argument fix before that column's final commit; the 744-drug numbers are on the final code.)
 
 Set 2's *first* run, before any change, scored routing 1.00, citations 0.94, gold source 0.88 and 3/3 refusals, so
 the headline numbers did not move after the fixes, but the questions that failed did. That run exposed three bugs
@@ -173,7 +196,7 @@ roughly a quarter of runs, still catches benign conclusion sentences, and should
 is wrong". Earlier versions of this README reported different numbers on smaller question sets; each step was
 re-measured, and the LLM is not perfectly repeatable between runs.
 
-#### Scaling to 298 drugs, and an adversarial question set
+#### Scaling (40, 298, 744 drugs) and an adversarial question set
 
 `python -m eval.adversarial` runs 31 questions written to break the assistant, each with a pass/fail rule checked
 by code (and every answer is printed so a person can read it too): misspelled drugs, brand names (including
@@ -181,12 +204,12 @@ Novartis products: Entresto, Gleevec, Tegretol, Diovan, Cosentyx), a question na
 non-indexed drug, false premises ("why is aspirin safe for children with a viral infection?"), dose numbers, prompt
 injection, drugs that are not indexed, questions that name no drug, an emergency, a Spanish question.
 
-| | 40-drug index, first run (25 questions) | 298-drug index, first run (31) | 298-drug index, final code (31) |
-|---|---|---|---|
-| Passed | 20 / 25 | 22 / 31 | **30 / 31** |
+| | 40 drugs, first run (25 questions) | 298 drugs, first run (31) | 298 drugs, final code (31) | 744 drugs, final code (31) |
+|---|---|---|---|---|
+| Passed | 20 / 25 | 22 / 31 | 30 / 31 | **30 / 31** |
 
-The questions changed between columns (6 added; three out-of-scope drugs swapped for ones that were still absent
-once the index grew), so read the columns as "what the same method found at each stage", not as a clean
+The questions changed between columns (6 added; out-of-scope drugs swapped for ones that were still absent once
+the index grew), so read the columns as "what the same method found at each stage", not as a clean
 before/after. What it found, all fixed and unit-tested:
 
 - **Brand names were not understood.** "Zoloft side effects" returned zoledronic acid and "Entresto" returned
@@ -215,8 +238,19 @@ before/after. What it found, all fixed and unit-tested:
 The one remaining failure: "what is the maximum daily dose of acetaminophen?" is answered with "one packet every
 6 hours", from an OTC label, and never states a daily maximum. I did not relax the rule to hide it.
 
-Also from scaling: adalimumab, semaglutide and tirzepatide now appear in a few PubMed titles, so they are only
-partly out of scope; set 1's adalimumab question is still refused. Data fix found while scaling: the `.gitignore`
+**What the second scale-up (298 to 744 drugs) found.** The index grew, and three of my "not indexed" drugs
+(lithium, pembrolizumab, dupilumab) each appeared in a few PubMed titles, so they stopped being clean
+out-of-scope tests; I swapped the adversarial questions to drugs that are still absent (nivolumab, apremilast,
+risdiplam, Ozempic). Set 1's own out-of-scope questions caught a real regression: "side effects of lithium" was
+answered, because a single abstract titled "Lithium and drug interactions" made the coverage check treat lithium
+as indexed, and the agent then assembled an answer from lithium mentions inside NSAID labels (the failure the
+coverage check exists to prevent). A drug with no label now counts as covered only if at least two documents are
+titled about it (`MIN_TITLE_DOCS`). That threshold is a heuristic I chose after seeing this one failure, not a
+tuned value. Tirzepatide (11 titled abstracts) is answerable from those abstracts; lithium (1) is refused by the
+coverage check; adalimumab (4) passes the coverage check, and set 1's question about its dose is still refused,
+but by the retrieval-relevance threshold, not by coverage. After the change set 1 refuses 7/7 again.
+
+Data fix found while scaling the first time: the `.gitignore`
 rule `data/` also matched `src/data/`, so the two download scripts had never been committed and a fresh clone could
 not run the documented commands; fixed.
 
@@ -328,16 +362,15 @@ app.py                   Streamlit UI
 scripts/                 command-line search, ask, agent, trace summary
 tests/                   unit tests
 eval/                    question sets (questions.jsonl, questions_set2.jsonl, adversarial.jsonl), run_eval.py,
-                         adversarial.py, saved adversarial results (40-drug baseline and 298-drug final)
+                         adversarial.py, saved adversarial results (40-, 298- and 744-drug runs)
 ```
 
 ## What would change at production scale
 
-This is a local portfolio project (17,693 chunks, 298 drugs, one laptop GPU). These are the gaps I would
+This is a local portfolio project (39,118 chunks, 744 drugs, one laptop GPU). These are the gaps I would
 close before anything like it served real users; none of them is built here.
 
-- **Scale:** FAISS in memory is fine for tens of thousands of chunks (17,693 here; embedding them took about 7 minutes). The 40-to-298-drug step cost the plain retrievers a lot and the final configuration little; a real catalogue would be 10-100x larger again. For millions, use an approximate index (IVF/HNSW)
-  or a vector database, and move BM25 to a real search engine instead of my in-process implementation.
+- **Scale:** an exact in-memory FAISS index is fine for tens of thousands of chunks (39,118 here, 120 MB; embedding them took 24 minutes). Growing the index 21x cost the plain retrievers a lot and the final configuration little, and query-side code that scaled with the number of drugs (my regex-based brand detection, a full scan in BM25) had to be replaced; a real catalogue would be 10-100x larger again and needs an approximate index (IVF/HNSW) or a vector database and a real search engine for BM25.
 - **Freshness:** labels and abstracts are downloaded once. A real system needs scheduled re-ingestion, versioned
   indexes, and answers that show the label's effective date, since labels change when new safety data appears.
 - **Evaluation validity:** my question sets are small and written by me. I would use questions written by
@@ -362,7 +395,7 @@ close before anything like it served real users; none of them is built here.
 - [x] Days 6–7: embedding fine-tuning experiment, measured (did not beat nomic-embed-text; see results)
 - [x] Day 8 (part): corrective RAG (grade, rewrite, refuse), Streamlit UI
 - [x] Day 8 (rest): run tracing (local JSON + optional LangFuse export, tested against a stand-in server)
-- [x] Scaled to 298 drugs and 17,693 chunks, with a 31-question adversarial set (30/31 on the final code)
+- [x] Scaled 40 -> 298 -> 744 drugs (39,118 chunks) with a 31-question adversarial set (30/31 on the final code) and a faster query path
 - [ ] Not done: build and run the Docker image (needs admin + WSL2, unavailable here); validate on a larger, independently written question set
 
 ## Disclaimer

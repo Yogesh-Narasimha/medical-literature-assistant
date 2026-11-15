@@ -131,13 +131,18 @@ def refresh_brands():
 
 
 def main():
+    """Download labels for DRUGS. With --resume, keep the labels already on disk and fetch only the drugs that
+    are missing (each label is written as it arrives, so an interrupted run loses nothing)."""
     if "--brands-only" in sys.argv:
         return refresh_brands()
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RAW_DIR / "drug_labels.jsonl"
+    resume = "--resume" in sys.argv and out_path.exists()
+    have = {json.loads(line)["drug"] for line in open(out_path, encoding="utf-8")} if resume else set()
+    todo = [d for d in DRUGS if d not in have]
     found, missing = 0, []
-    with open(out_path, "w", encoding="utf-8") as f:
-        for drug in tqdm(DRUGS, desc="openFDA labels"):
+    with open(out_path, "a" if resume else "w", encoding="utf-8") as f:
+        for drug in tqdm(todo, desc="openFDA labels"):
             try:
                 label = fetch_label(drug)
             except requests.RequestException as e:
@@ -146,10 +151,11 @@ def main():
             if label is None:
                 missing.append(drug)
             else:
-                f.write(json.dumps(to_record(drug, label), ensure_ascii=False) + "\n")
+                f.write(json.dumps(to_record(drug, label), ensure_ascii=False) + chr(10))
+                f.flush()
                 found += 1
             time.sleep(0.3)  # stay well under the public rate limit
-    print(f"Saved {found} labels to {out_path}")
+    print(f"Saved {found} labels to {out_path} ({len(have)} were already there)")
     if missing:
         print(f"No label found for: {', '.join(missing)}")
 

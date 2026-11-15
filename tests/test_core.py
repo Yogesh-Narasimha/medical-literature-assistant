@@ -283,8 +283,9 @@ def test_reranker_reorders_but_keeps_dense_scores():
 def coverage(monkeypatch, tools):
     from src.agent import coverage as cov
     monkeypatch.setattr(cov, "_labels", lambda: {"warfarin": {}, "ibuprofen": {}, "metformin": {}})
-    monkeypatch.setattr(cov, "_covered_terms", lambda: {"warfarin", "ibuprofen", "metformin",
-                                                        "metformin and digestive disorders"})
+    monkeypatch.setattr(cov, "_covered_terms", lambda: {"warfarin", "ibuprofen", "metformin"})
+    monkeypatch.setattr(cov, "_titles", lambda: ["metformin and digestive disorders", "lithium and drug interactions",
+                                                 "tirzepatide weight loss", "tirzepatide and cardiovascular risk"])
     return cov
 
 
@@ -550,3 +551,38 @@ def test_normalize_drug_rejoins_a_brand_name_the_model_split(tools):
     assert tools.normalize_drug("coum adin") == "warfarin"       # 'coumadin' is a brand in the fixture
     assert tools.normalize_drug("ibu-profen") == "ibuprofen"
     assert tools.normalize_drug("no such drug") == "no such drug"
+
+
+def test_inverted_index_bm25_gives_the_same_ranking_as_scoring_every_chunk():
+    """The inverted index is an optimisation; it must not change a single score or tie-break."""
+    import random
+    random.seed(7)
+    vocab = ["warfarin", "bleeding", "kidney", "dose", "liver", "pregnancy", "nausea", "interaction", "renal", "label"]
+    chunks = [chunk(f"c{i}#s#0", " ".join(random.choices(vocab, k=random.randint(3, 25))), drug=f"d{i % 7}")
+              for i in range(120)]
+    bm = BM25Retriever(chunks)
+
+    def brute(query, k):
+        terms = [t for t in tokenize(query) if t in bm.idf]
+        scored = []
+        for i, tf in enumerate(bm.tfs):
+            s = 0.0
+            for t in terms:
+                if t in tf:
+                    f = tf[t]
+                    s += bm.idf[t] * f * (bm.k1 + 1) / (f + bm.k1 * (1 - bm.b + bm.b * bm.lens[i] / bm.avg_len))
+            if s > 0:
+                scored.append((s, i))
+        scored.sort(reverse=True)
+        return [(round(s, 12), bm.chunks[i]["chunk_id"]) for s, i in scored[:k]]
+
+    for q in ("warfarin bleeding", "kidney dose renal kidney", "pregnancy liver nausea interaction label", "zzz", "dose"):
+        assert [(round(h.score, 12), h.chunk["chunk_id"]) for h in bm.search(q, 15)] == brute(q, 15)
+
+
+def test_a_single_abstract_title_does_not_make_a_labelless_drug_covered(coverage):
+    """Real failure at 744 drugs: one PubMed title 'Lithium and drug interactions' made lithium 'covered', and the
+    agent answered 'side effects of lithium' from lithium mentions inside NSAID labels."""
+    assert not coverage.is_covered("lithium")          # named in one title only
+    assert coverage.is_covered("tirzepatide")          # named in two titles: the index really has material on it
+    assert coverage.is_covered("warfarin")             # label

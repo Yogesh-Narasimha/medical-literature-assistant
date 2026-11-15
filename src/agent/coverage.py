@@ -6,7 +6,7 @@ answers a different question ("lithium side effects" -> "lithium interactions").
 
   1. a short LLM call extracts the drug names in the question,
   2. each name is checked against the index: a label for it, a brand name, a drug class we know, or a drug
-     named in the title of a document (PubMed abstracts carry the drug in the title),
+     named in the titles of at least MIN_TITLE_DOCS documents (PubMed abstracts carry the drug in the title),
   3. if NONE of the named drugs is covered -> refuse and say which drug is missing.
 
 If extraction fails or returns nothing, the question simply proceeds (fail open): this check only adds a
@@ -28,14 +28,26 @@ Sentence: {q}
 Medication names:"""
 
 
+MIN_TITLE_DOCS = 2   # a drug with no label is "covered" only if at least this many documents are titled about it
+
+
 @lru_cache(maxsize=1)
 def _covered_terms() -> set[str]:
-    """Lowercase names the index covers: label keys, label brand names, and document titles."""
-    terms = set(_labels()) | set(_brand_index())
+    """Lowercase names the index has a LABEL for: label keys and label brand names."""
+    return set(_labels()) | set(_brand_index())
+
+
+@lru_cache(maxsize=1)
+def _titles() -> list[str]:
+    """Lowercase title of every chunk's document (one entry per document)."""
+    seen, titles = set(), []
     with open(PROCESSED_DIR / "chunks.jsonl", encoding="utf-8") as f:
         for line in f:
-            terms.add(json.loads(line)["title"].lower())
-    return terms
+            c = json.loads(line)
+            if c["doc_id"] not in seen:
+                seen.add(c["doc_id"])
+                titles.append(c["title"].lower())
+    return titles
 
 
 def extract_drugs(question: str) -> list[str]:
@@ -56,7 +68,11 @@ def is_covered(name: str) -> bool:
     name = normalize_drug(name)
     if name in DRUG_CLASSES or name in _labels():
         return True
-    return any(name in term or (len(term) > 3 and term in name) for term in _covered_terms())
+    if any(name in term or (len(term) > 3 and term in name) for term in _covered_terms()):
+        return True
+    # No label. One PubMed abstract titled "Lithium and drug interactions" must not make lithium "covered": the
+    # agent then answered "side effects of lithium" from lithium mentions inside NSAID labels. Require a few.
+    return sum(name in t for t in _titles()) >= MIN_TITLE_DOCS
 
 
 def coverage(question: str) -> tuple[list[str], list[str]]:

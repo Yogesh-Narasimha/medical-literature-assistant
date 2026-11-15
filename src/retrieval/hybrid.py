@@ -21,6 +21,7 @@ FUZZY_CUTOFF = 0.87   # misspelled drug names; every common misspelling tried ma
 STOPWORDS = set("a an and are as at be by can for from how i in is it of on or the to what which with do does "
                 "take taken use used".split())
 _TOKEN = re.compile(r"[a-z0-9]+")
+_WORD = _TOKEN
 
 
 def tokenize(text: str) -> list[str]:
@@ -41,19 +42,22 @@ class BM25Retriever:
         df = Counter(t for tf in self.tfs for t in tf)
         n = len(docs)
         self.idf = {t: math.log(1 + (n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
+        # Inverted index: term -> [(chunk index, term frequency)]. A query then touches only the chunks that
+        # contain one of its terms instead of looping over every chunk (the cost grew linearly with the index).
+        self.postings: dict[str, list[tuple[int, int]]] = {}
+        for i, tf in enumerate(self.tfs):
+            for t, f in tf.items():
+                self.postings.setdefault(t, []).append((i, f))
 
     def search(self, query: str, k: int = TOP_K) -> list[Hit]:
         terms = [t for t in tokenize(query) if t in self.idf]
-        scored = []
-        for i, tf in enumerate(self.tfs):
-            s = 0.0
-            for t in terms:
-                if t in tf:
-                    f = tf[t]
-                    s += self.idf[t] * f * (self.k1 + 1) / (f + self.k1 * (1 - self.b + self.b * self.lens[i] / self.avg_len))
-            if s > 0:
-                scored.append((s, i))
-        scored.sort(reverse=True)
+        scores: dict[int, float] = {}
+        for t in terms:                      # same term order and arithmetic as scoring chunk by chunk
+            idf = self.idf[t]
+            for i, f in self.postings[t]:
+                scores[i] = scores.get(i, 0.0) + idf * f * (self.k1 + 1) / (
+                    f + self.k1 * (1 - self.b + self.b * self.lens[i] / self.avg_len))
+        scored = sorted(((s, i) for i, s in scores.items() if s > 0), reverse=True)
         return [Hit(s, self.chunks[i]) for s, i in scored[:k]]
 
 
@@ -97,18 +101,38 @@ class HybridRetriever:
         # brand (lowercase) -> generic drug. Without it "Zoloft side effects" names no drug, gets no boost, and
         # the rerankers drift to look-alike names (zoledronic acid).
         self.brands = _load_brands(set(self.drugs)) if brands is None else brands
+        self._build_name_index()
+
+    def _build_name_index(self) -> None:
+        """phrase (lowercase words joined by one space) -> generic drug, for generic names and brand names.
+        Looking up the query's 1..N-word phrases in this dict replaced ~1,650 regex searches per query (the
+        hybrid retriever took 228 ms, ten times its two rankers combined) and does not grow with the index."""
+        words = lambda text: " ".join(_WORD.findall(text.lower()))   # noqa: E731
+        names = {words(b): g for b, g in self.brands.items()}
+        names.update({words(d): d for d in self.drugs})               # a generic name beats a brand of the same words
+        self._names = names
+        self._max_words = max((n.count(" ") + 1 for n in names), default=1)
+        self._singles = [d for d in self.drugs if " " not in d]
+        self._cache: dict[str, set[str]] = {}
 
     def _query_drugs(self, query: str) -> set[str]:
-        q = query.lower()
-        named = {d for d in self.drugs if re.search(r"\b" + re.escape(d) + r"\b", q)}
-        named |= {g for b, g in self.brands.items() if re.search(r"\b" + re.escape(b) + r"\b", q)}
+        if query in self._cache:
+            return set(self._cache[query])
+        toks = _WORD.findall(query.lower())
+        named: set[str] = set()
+        for n in range(1, self._max_words + 1):
+            for i in range(len(toks) - n + 1):
+                g = self._names.get(" ".join(toks[i:i + n]))
+                if g:
+                    named.add(g)
         # Misspellings ("metformine", "ibuprofin", "warfrin"): a word of 6+ letters that is no drug but is very
         # close to exactly one single-word drug name. Checked on ~45 ordinary medical words: no false matches.
-        singles = [d for d in self.drugs if " " not in d]
-        for tok in set(re.findall(r"[a-z]{6,}", q)):
-            if tok not in self.drugs and tok not in self.brands:
-                close = difflib.get_close_matches(tok, singles, n=1, cutoff=FUZZY_CUTOFF)
-                named.update(close)
+        for tok in set(t for t in toks if len(t) >= 6 and t.isalpha()):
+            if tok not in self._names:
+                named.update(difflib.get_close_matches(tok, self._singles, n=1, cutoff=FUZZY_CUTOFF))
+        if len(self._cache) > 2048:
+            self._cache.clear()
+        self._cache[query] = set(named)
         return named
 
     def expand(self, query: str) -> str:
