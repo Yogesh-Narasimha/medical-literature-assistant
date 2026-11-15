@@ -262,3 +262,26 @@ def run_agent(question: str) -> dict:
     }
     log_trace(result)
     return result
+
+
+def warmup() -> dict:
+    """Pay the one-time costs before the first user question: load the indexes and the cross-encoder, load
+    both Ollama models into GPU memory, and run one throwaway retrieval + one-token generation. Without this
+    the first question took far longer than later ones. Returns seconds per step."""
+    import time
+    from src.agent.tools import get_retriever
+    steps, t = {}, time.time()
+
+    def lap(name):
+        nonlocal t
+        steps[name] = round(time.time() - t, 1)
+        t = time.time()
+
+    retriever = get_retriever()
+    lap("indexes")
+    retriever.search("warmup ibuprofen side effects", 5)      # embeds (loads the embedding model) + reranks
+    lap("embed_and_rerank")
+    _client.chat(model=LLM_MODEL, messages=[{"role": "user", "content": "hi"}],
+                 options={"num_predict": 1}, keep_alive="30m")
+    lap("llm")
+    return steps

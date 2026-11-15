@@ -286,6 +286,7 @@ def coverage(monkeypatch, tools):
     monkeypatch.setattr(cov, "_covered_terms", lambda: {"warfarin", "ibuprofen", "metformin"})
     monkeypatch.setattr(cov, "_titles", lambda: ["metformin and digestive disorders", "lithium and drug interactions",
                                                  "tirzepatide weight loss", "tirzepatide and cardiovascular risk"])
+    monkeypatch.setattr(cov, "_mention_docs", lambda name: {"lithium": 165, "tirzepatide": 8}.get(name, 1))
     return cov
 
 
@@ -583,6 +584,87 @@ def test_inverted_index_bm25_gives_the_same_ranking_as_scoring_every_chunk():
 def test_a_single_abstract_title_does_not_make_a_labelless_drug_covered(coverage):
     """Real failure at 744 drugs: one PubMed title 'Lithium and drug interactions' made lithium 'covered', and the
     agent answered 'side effects of lithium' from lithium mentions inside NSAID labels."""
-    assert not coverage.is_covered("lithium")          # named in one title only
+    assert not coverage.is_covered("lithium")          # named in one title, in 165 documents
     assert coverage.is_covered("tirzepatide")          # named in two titles: the index really has material on it
     assert coverage.is_covered("warfarin")             # label
+
+
+# ---- incremental index build, approximate index, label quality gate ----
+
+def test_incremental_build_reuses_unchanged_vectors_and_embeds_only_new(tmp_path, monkeypatch):
+    import json as _json
+
+    import faiss
+    import numpy as np
+
+    from src.ingest import build_index as bi
+
+    calls = []
+
+    def fake_embed(texts):
+        calls.append(list(texts))
+        out = np.array([[len(t), 1.0, 0.0, 0.0] for t in texts], dtype="float32")
+        return out / np.linalg.norm(out, axis=1, keepdims=True)
+
+    idx_dir, proc = tmp_path / "index", tmp_path / "processed"
+    idx_dir.mkdir(), proc.mkdir()
+    monkeypatch.setattr(bi, "INDEX_DIR", idx_dir)
+    monkeypatch.setattr(bi, "PROCESSED_DIR", proc)
+    monkeypatch.setattr(bi, "embed_documents", fake_embed)
+    monkeypatch.setattr("sys.argv", ["build_index"])
+
+    def write(texts):
+        with open(proc / "chunks.jsonl", "w", encoding="utf-8") as f:
+            for i, t in enumerate(texts):
+                f.write(_json.dumps({"chunk_id": str(i), "text": t}) + "\n")
+
+    write(["alpha", "beta"])
+    bi.main()
+    assert [t for batch in calls for t in batch] == ["alpha", "beta"]
+    calls.clear()
+    write(["alpha", "beta", "gamma gamma"])          # one new chunk
+    bi.main()
+    assert [t for batch in calls for t in batch] == ["gamma gamma"]
+    index = faiss.read_index(str(idx_dir / "faiss.index"))
+    assert index.ntotal == 3
+    # reused vectors must be the same numbers a fresh embedding would give
+    expect = fake_embed(["alpha", "beta", "gamma gamma"])
+    assert np.allclose(index.reconstruct_n(0, 3), expect, atol=1e-6)
+
+
+def test_hnsw_index_returns_same_top_hit_as_exact_search():
+    import faiss
+    import numpy as np
+
+    from src.ingest.build_index import build_hnsw
+
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(500, 16)).astype("float32")
+    x /= np.linalg.norm(x, axis=1, keepdims=True)
+    exact = faiss.IndexFlatIP(16)
+    exact.add(x)
+    approx = build_hnsw(x)
+    approx.hnsw.efSearch = 64
+    q = x[:50] + 0.01 * rng.normal(size=(50, 16)).astype("float32")
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    assert (exact.search(q, 1)[1] == approx.search(q, 1)[1]).mean() >= 0.98
+
+
+def test_label_quality_gate_drops_thin_homeopathic_and_unindicated_labels():
+    from src.data.fetch_openfda import usable
+
+    good = {"drug": "phentermine", "sections": {"indications_and_usage": "x" * 2000, "warnings": "y" * 2000}}
+    assert usable(good)
+    assert not usable({"drug": "phentermine", "sections": {"indications_and_usage": "short"}})
+    assert not usable({"drug": "phentermine", "sections": {"warnings": "y" * 5000}})
+    assert not usable({**good, "drug": "gonorrheal urethral secretion human"})
+
+
+def test_label_less_drug_needs_a_real_share_of_its_mentions_to_be_titled(coverage, monkeypatch):
+    # tirzepatide is titled in 2 documents of the fixture; whether that counts depends on the share
+    monkeypatch.setattr(coverage, "_mention_docs", lambda name: 10)
+    assert coverage.is_covered("tirzepatide")                  # 2 titled / 10 mentions = 0.2
+    monkeypatch.setattr(coverage, "_mention_docs", lambda name: 100)
+    assert not coverage.is_covered("tirzepatide")              # 2 / 100: the corpus only names it in passing
+    monkeypatch.setattr(coverage, "_mention_docs", lambda name: 165)
+    assert not coverage.is_covered("lithium")                  # the real case: 2 titled, 165 mentions

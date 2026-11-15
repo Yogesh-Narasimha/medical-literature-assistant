@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import faiss
 
-from src.config import INDEX_DIR, TOP_K
+from src.config import DENSE_INDEX, HNSW_EF_SEARCH, INDEX_DIR, TOP_K
 from src.retrieval.embedder import embed_query
 
 
@@ -28,7 +28,11 @@ class DenseRetriever:
     def __init__(self, index_dir=INDEX_DIR):
         if not (index_dir / "faiss.index").exists():
             raise SystemExit("No index found. Run `python -m src.ingest.build_index` first.")
-        self.index = faiss.read_index(str(index_dir / "faiss.index"))
+        if DENSE_INDEX == "hnsw":
+            self.index = faiss.read_index(str(index_dir / "faiss_hnsw.index"))
+            self.index.hnsw.efSearch = HNSW_EF_SEARCH
+        else:
+            self.index = faiss.read_index(str(index_dir / "faiss.index"))
         with open(index_dir / "chunks.jsonl", encoding="utf-8") as f:
             self.chunks = [json.loads(line) for line in f]
 

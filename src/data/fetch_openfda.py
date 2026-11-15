@@ -130,11 +130,39 @@ def refresh_brands():
     print(f"Updated brand names for {len(records)} labels")
 
 
+MIN_LABEL_CHARS = 3000      # a usable label has at least this much indexable text
+REQUIRED_SECTIONS = ("indications_and_usage",)
+JUNK_WORDS = ("secretion", "cutaneous gland", "streptococcus", "extract", "pollen", "venom")
+
+
+def usable(rec: dict) -> bool:
+    """Quality gate for labels pulled from openFDA's name counts, which also contain homeopathic products,
+    allergen extracts, and thin entries: keep a label only if it states what the drug is for and has real text."""
+    text = sum(len(t) for t in rec.get("sections", {}).values())
+    return (text >= MIN_LABEL_CHARS
+            and all(sec in rec["sections"] for sec in REQUIRED_SECTIONS)
+            and not any(w in rec["drug"].lower() for w in JUNK_WORDS))
+
+
+def prune():
+    """Drop labels that fail `usable`. Run: python -m src.data.fetch_openfda --prune"""
+    path = RAW_DIR / "drug_labels.jsonl"
+    records = [json.loads(line) for line in open(path, encoding="utf-8")]
+    keep = [r for r in records if usable(r)]
+    dropped = [r["drug"] for r in records if not usable(r)]
+    with open(path, "w", encoding="utf-8") as f:
+        for r in keep:
+            f.write(json.dumps(r, ensure_ascii=False) + chr(10))
+    print(f"Kept {len(keep)} labels, dropped {len(dropped)}: {', '.join(dropped)}")
+
+
 def main():
     """Download labels for DRUGS. With --resume, keep the labels already on disk and fetch only the drugs that
     are missing (each label is written as it arrives, so an interrupted run loses nothing)."""
     if "--brands-only" in sys.argv:
         return refresh_brands()
+    if "--prune" in sys.argv:
+        return prune()
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RAW_DIR / "drug_labels.jsonl"
     resume = "--resume" in sys.argv and out_path.exists()

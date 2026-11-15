@@ -1,0 +1,57 @@
+  What are the side effects of metformin?             tools=['search_documents'] cited=[2, 4, 5]
+  What is the boxed warning for metformin?            tools=['lookup_drug_label'] cited=[1]
+  Can I take ibuprofen with warfarin?                 tools=['check_interaction'] cited=[1, 2]
+  What drugs interact with warfarin?                  tools=['check_interaction'] cited=[1]
+  What are the contraindications of lisinopril?       tools=['lookup_drug_label'] cited=[1]
+  What is the recommended dosage of amoxicillin?      tools=['lookup_drug_label'] cited=[1]
+  How does atorvastatin work?                         tools=['search_documents'] cited=[1, 2]
+  What is the boxed warning for fluoxetine?           tools=['lookup_drug_label'] cited=[1]
+  What are common adverse reactions of sertraline?    tools=['search_documents'] cited=[1, 2, 3, 4, 5]
+  What is apixaban indicated for?                     tools=['search_documents'] cited=[1, 2, 3, 4]
+  Which drugs interact with clopidogrel?              tools=['search_documents'] cited=[]
+  Is ciprofloxacin associated with tendon rupture?    tools=['lookup_drug_label'] cited=[1]
+  What are the warnings for tramadol?                 tools=['lookup_drug_label'] cited=[1]
+  What is the use of levothyroxine?                   tools=['search_documents'] cited=[1, 2, 3, 4, 5]
+  Can empagliflozin be used in patients with kidney   tools=['search_documents'] cited=[1, 2]
+  What are the risks of long-term proton pump inhibi  tools=['search_documents'] cited=[1, 2, 3, 4, 5]
+  Is Tylenol safe to take with a blood thinner?       tools=['check_interaction'] cited=[1]
+  Can I take paracetamol with coumadin?               tools=['check_interaction'] cited=[1]
+  What painkiller is safest for my stomach ulcer?     tools=['search_documents'] cited=[1, 3, 4]
+  What is the boxed warning for sertraline?           tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for bupropion?            tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for alprazolam?           tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for montelukast?          tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for levothyroxine?        tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for losartan?             tools=['lookup_drug_label'] cited=[1]
+  What is the boxed warning for sacubitril and valsa  tools=['lookup_drug_label'] cited=[1]
+  What is amlodipine used for?                        tools=['search_documents'] cited=[1, 3]
+  What is gabapentin indicated for?                   tools=['search_documents'] cited=[1, 2]
+  What is levetiracetam used to treat?                tools=['search_documents'] cited=[1, 2]
+  What is the recommended dosage of levothyroxine?    tools=['lookup_drug_label'] cited=[1]
+  What are the contraindications of spironolactone?   tools=['lookup_drug_label'] cited=[1]
+  What are the contraindications of furosemide?       tools=['lookup_drug_label'] cited=[1]
+  What are the common side effects of gabapentin?     tools=['search_documents'] cited=[1, 2, 3]
+  What adverse reactions does doxycycline cause?      tools=['search_documents'] cited=[]
+  How does spironolactone work?                       tools=['search_documents'] cited=[1]
+  How does montelukast work?                          tools=['search_documents'] cited=[1]
+  Can I take clopidogrel with omeprazole?             tools=['check_interaction'] cited=[1, 2]
+  Can I take sertraline with ibuprofen?               tools=['check_interaction'] cited=[1, 2]
+  Can I take lisinopril together with spironolactone  tools=['check_interaction'] cited=[1, 2]
+  What drugs interact with atorvastatin?              tools=['check_interaction'] cited=[1]
+  Is naproxen safe for people with kidney problems?   tools=['search_documents'] cited=[1, 2, 3]
+  Can I take losartan while pregnant?                 tools=['search_documents'] cited=[1, 2, 3, 4, 5]
+  What are the warnings for azithromycin?             tools=['lookup_drug_label'] cited=[1]
+  Who won the 2018 football world cup?                refused=yes
+  What is the best pizza topping?                     refused=yes
+  How do I fix a flat bicycle tire?                   refused=yes
+  What is the weather in Paris today?                 refused=yes
+  Write me a poem about cats.                         refused=yes
+  What are the side effects of lithium?               refused=yes
+  What is the recommended dose of adalimumab?         refused=yes
+
+Agent over 43 in-scope questions
+  Tool routing accuracy:      0.95
+  Answers with citations:     0.95
+  All citations valid:        0.95
+  Cites a gold source:        0.88
+Out-of-scope refusal rate:    1.00  (7 questions)

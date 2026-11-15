@@ -6,7 +6,7 @@ answers a different question ("lithium side effects" -> "lithium interactions").
 
   1. a short LLM call extracts the drug names in the question,
   2. each name is checked against the index: a label for it, a brand name, a drug class we know, or a drug
-     named in the titles of at least MIN_TITLE_DOCS documents (PubMed abstracts carry the drug in the title),
+     named in the titles of at least MIN_TITLE_DOCS documents that make up a real share of the documents mentioning it,
   3. if NONE of the named drugs is covered -> refuse and say which drug is missing.
 
 If extraction fails or returns nothing, the question simply proceeds (fail open): this check only adds a
@@ -28,7 +28,8 @@ Sentence: {q}
 Medication names:"""
 
 
-MIN_TITLE_DOCS = 2   # a drug with no label is "covered" only if at least this many documents are titled about it
+MIN_TITLE_DOCS = 2      # a drug with no label is "covered" only if at least this many documents are titled about it
+MIN_TITLE_SHARE = 0.15  # ...and those titled documents are at least this share of ALL documents that mention it
 
 
 @lru_cache(maxsize=1)
@@ -48,6 +49,18 @@ def _titles() -> list[str]:
                 seen.add(c["doc_id"])
                 titles.append(c["title"].lower())
     return titles
+
+
+@lru_cache(maxsize=256)
+def _mention_docs(name: str) -> int:
+    """Number of documents whose text mentions the name anywhere (labels of OTHER drugs included)."""
+    from src.agent.tools import get_retriever
+    docs = set()
+    retriever = get_retriever()
+    for c in getattr(retriever, "base", retriever).dense.chunks:      # a reranker wraps the hybrid retriever
+        if c["doc_id"] not in docs and name in c["text"].lower():
+            docs.add(c["doc_id"])
+    return len(docs)
 
 
 def extract_drugs(question: str) -> list[str]:
@@ -70,9 +83,12 @@ def is_covered(name: str) -> bool:
         return True
     if any(name in term or (len(term) > 3 and term in name) for term in _covered_terms()):
         return True
-    # No label. One PubMed abstract titled "Lithium and drug interactions" must not make lithium "covered": the
-    # agent then answered "side effects of lithium" from lithium mentions inside NSAID labels. Require a few.
-    return sum(name in t for t in _titles()) >= MIN_TITLE_DOCS
+    # No label. A few PubMed titles are not enough: lithium has 2 titled abstracts but is mentioned in 165 documents
+    # (the interaction sections of NSAID, ACE inhibitor and diuretic labels), and the agent answered "side effects of
+    # lithium" from those mentions. So a label-less drug counts as covered only if enough documents are titled about it
+    # AND they are a real share of everything that mentions it (the corpus is about the drug, not merely naming it).
+    titled = sum(name in t for t in _titles())
+    return titled >= MIN_TITLE_DOCS and titled / max(_mention_docs(name), titled) >= MIN_TITLE_SHARE
 
 
 def coverage(question: str) -> tuple[list[str], list[str]]:

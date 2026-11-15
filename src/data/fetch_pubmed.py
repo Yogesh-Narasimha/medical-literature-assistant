@@ -4,6 +4,7 @@ Output: data/raw/pubmed_abstracts.jsonl  (one record per article)
 Run:    python -m src.data.fetch_pubmed
 """
 import json
+import sys
 import time
 import xml.etree.ElementTree as ET
 
@@ -50,10 +51,16 @@ def fetch(pmids: list[str]) -> list[dict]:
 def main():
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RAW_DIR / "pubmed_abstracts.jsonl"
-    seen = set()
+    seen, done_queries = set(), set()
+    resume = "--resume" in sys.argv and out_path.exists()
+    if resume:                        # keep what is on disk, fetch only queries not yet run
+        for line in open(out_path, encoding="utf-8"):
+            rec = json.loads(line)
+            seen.add(rec["doc_id"].split(":", 1)[1])
+            done_queries.add(rec["query"])
     count = 0
-    with open(out_path, "w", encoding="utf-8") as f:
-        for query in tqdm(PUBMED_QUERIES, desc="PubMed queries"):
+    with open(out_path, "a" if resume else "w", encoding="utf-8") as f:
+        for query in tqdm([q for q in PUBMED_QUERIES if q not in done_queries], desc="PubMed queries"):
             try:
                 pmids = [p for p in search(query, PUBMED_PER_QUERY) if p not in seen]
                 time.sleep(PAUSE)

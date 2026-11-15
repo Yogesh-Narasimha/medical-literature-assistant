@@ -1,0 +1,7 @@
+123 queries, 56888 vectors, M=32, flat file 175 MB, hnsw file 190 MB
+exact (flat)               p50   7.52 ms/query
+hnsw efSearch=16          p50   0.19 ms/query   recall@10 0.849   top-1 agrees 0.902
+hnsw efSearch=32          p50   0.35 ms/query   recall@10 0.924   top-1 agrees 0.951
+hnsw efSearch=64          p50   0.38 ms/query   recall@10 0.959   top-1 agrees 0.967
+hnsw efSearch=128         p50   0.76 ms/query   recall@10 0.984   top-1 agrees 0.976
+hnsw efSearch=256         p50   1.94 ms/query   recall@10 0.993   top-1 agrees 0.992

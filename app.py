@@ -1,7 +1,15 @@
 """Streamlit UI.  Run:  streamlit run app.py"""
 import streamlit as st
 
-from src.agent.graph import run_agent
+from src.agent.graph import run_agent, warmup
+
+
+@st.cache_resource(show_spinner="Loading indexes and models (one time)...")
+def _warm():
+    return warmup()
+
+
+_warm()
 
 st.set_page_config(page_title="Medical Literature Assistant", page_icon="💊")
 st.title("Medical Literature Assistant")

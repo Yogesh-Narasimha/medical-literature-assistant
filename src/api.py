@@ -6,9 +6,18 @@ Docs: http://localhost:8000/docs
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from src.agent.graph import run_agent
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Medical Literature Assistant")
+from src.agent.graph import run_agent, warmup
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    warmup()          # load models and indexes before serving, so the first question is not the slow one
+    yield
+
+
+app = FastAPI(title="Medical Literature Assistant", lifespan=lifespan)
 
 
 class Ask(BaseModel):

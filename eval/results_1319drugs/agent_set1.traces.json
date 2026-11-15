@@ -1,0 +1,17 @@
+{
+  "runs": 50,
+  "latency_ms_p50": 4467,
+  "latency_ms_p95": 15939,
+  "avg_llm_calls": 1.9,
+  "avg_tokens": 2306,
+  "refusal_rate": 0.16,
+  "corrective_rewrite_rate": 0.02,
+  "runs_with_invalid_citations": 0,
+  "runs_with_uncited_statements": 12,
+  "tool_usage": {
+    "search_documents": 19,
+    "lookup_drug_label": 18,
+    "check_interaction": 8,
+    "coverage_check": 1
+  }
+}

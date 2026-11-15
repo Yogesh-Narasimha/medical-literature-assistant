@@ -1,0 +1,70 @@
+Retrieval over 43 in-scope questions
+  dense       strict  R@1=0.35  R@3=0.63  R@5=0.70  MRR=0.49
+  dense       relaxed R@1=0.42  R@3=0.70  R@5=0.74  MRR=0.55
+  bm25        strict  R@1=0.47  R@3=0.63  R@5=0.67  MRR=0.55
+  bm25        relaxed R@1=0.53  R@3=0.67  R@5=0.72  MRR=0.61
+  hybrid      strict  R@1=0.49  R@3=0.72  R@5=0.77  MRR=0.60
+  hybrid      relaxed R@1=0.56  R@3=0.77  R@5=0.81  MRR=0.66
+  hyb+drug    strict  R@1=0.67  R@3=0.81  R@5=0.88  MRR=0.75
+  hyb+drug    relaxed R@1=0.72  R@3=0.86  R@5=0.91  MRR=0.79
+  hyb+corr    strict  R@1=0.67  R@3=0.81  R@5=0.88  MRR=0.75
+  hyb+corr    relaxed R@1=0.72  R@3=0.86  R@5=0.91  MRR=0.79
+  hyb+rerank  strict  R@1=0.63  R@3=0.74  R@5=0.81  MRR=0.70
+  hyb+rerank  relaxed R@1=0.70  R@3=0.81  R@5=0.88  MRR=0.77
+  drug+rerank strict  R@1=0.67  R@3=0.77  R@5=0.88  MRR=0.74
+  drug+rerank relaxed R@1=0.74  R@3=0.84  R@5=0.93  MRR=0.81
+
+Per question strict rank (dense / bm25 / hybrid / hyb+drug / hyb+corr / hyb+rerank / drug+rerank):
+     5 / None / None /    4 /    4 / None /    5   What are the side effects of metformin?
+  None / None / None /    1 /    1 /    1 /    1   What is the boxed warning for metformin?
+  None / None / None /    2 /    2 /    5 /    4   Can I take ibuprofen with warfarin?
+  None /    2 /    3 /    1 /    1 / None / None   What drugs interact with warfarin?
+     2 /    1 /    2 /    1 /    1 /    1 /    1   What are the contraindications of lisinopril?
+  None /    3 / None /    4 /    4 /    1 /    1   What is the recommended dosage of amoxicillin?
+     2 / None /    5 /    2 /    2 /    1 /    1   How does atorvastatin work?
+  None /    2 /    1 /    1 /    1 /    1 /    1   What is the boxed warning for fluoxetine?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What are common adverse reactions of sertraline?
+  None /    2 / None / None / None / None /    1   What is apixaban indicated for?
+     1 /    4 /    2 /    1 /    1 /    2 /    2   Which drugs interact with clopidogrel?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   Is ciprofloxacin associated with tendon rupture?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What are the warnings for tramadol?
+     4 / None / None /    4 /    4 /    1 /    1   What is the use of levothyroxine?
+     2 / None /    2 /    1 /    1 /    5 /    5   Can empagliflozin be used in patients with kidney problems?
+  None / None / None / None / None / None / None   What are the risks of long-term proton pump inhibitor use?
+     3 / None /    3 /    1 /    1 / None /    4   Is Tylenol safe to take with a blood thinner?
+  None / None / None / None / None / None / None   Can I take paracetamol with coumadin?
+  None / None / None / None / None / None / None   What painkiller is safest for my stomach ulcer?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What is the boxed warning for sertraline?
+  None /    1 /    3 /    3 /    3 /    1 /    1   What is the boxed warning for bupropion?
+  None /    1 /    3 /    3 /    3 /    1 /    1   What is the boxed warning for alprazolam?
+     3 /    1 /    2 /    1 /    1 /    2 /    2   What is the boxed warning for montelukast?
+  None /    1 /    1 /    1 /    1 /    1 /    1   What is the boxed warning for levothyroxine?
+     2 /    1 /    1 /    1 /    1 /    1 /    1   What is the boxed warning for losartan?
+     3 /    1 /    1 /    1 /    1 /    1 /    1   What is the boxed warning for sacubitril and valsartan?
+     1 / None /    1 /    1 /    1 /    1 /    1   What is amlodipine used for?
+     2 /    1 /    1 /    1 /    1 /    1 /    1   What is gabapentin indicated for?
+     4 / None /    4 /    2 /    2 /    2 /    2   What is levetiracetam used to treat?
+     2 /    1 /    1 /    1 /    1 /    2 /    1   What is the recommended dosage of levothyroxine?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What are the contraindications of spironolactone?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What are the contraindications of furosemide?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What are the common side effects of gabapentin?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   What adverse reactions does doxycycline cause?
+     1 /    5 /    2 /    2 /    2 /    1 /    1   How does spironolactone work?
+  None / None / None / None / None / None / None   How does montelukast work?
+     1 /    2 /    1 /    1 /    1 /    4 /    4   Can I take clopidogrel with omeprazole?
+     2 / None /    1 /    1 /    1 /    1 /    1   Can I take sertraline with ibuprofen?
+     2 /    1 /    1 /    1 /    1 /    1 /    1   Can I take lisinopril together with spironolactone?
+     3 /    1 /    1 /    1 /    1 /    3 /    3   What drugs interact with atorvastatin?
+     1 /    3 /    2 /    1 /    1 /    1 /    1   Is naproxen safe for people with kidney problems?
+     1 /    1 /    1 /    1 /    1 /    1 /    1   Can I take losartan while pregnant?
+     1 /    2 /    1 /    1 /    1 /    1 /    1   What are the warnings for azithromycin?
+
+Out-of-scope top-1 dense scores (MIN_RELEVANCE currently 0.65):
+  0.553  Who won the 2018 football world cup?
+  0.564  What is the best pizza topping?
+  0.611  How do I fix a flat bicycle tire?
+  0.598  What is the weather in Paris today?
+  0.609  Write me a poem about cats.
+  0.771  What are the side effects of lithium?
+  0.804  What is the recommended dose of adalimumab?
+In-scope top-1 dense score: min 0.697, mean 0.806

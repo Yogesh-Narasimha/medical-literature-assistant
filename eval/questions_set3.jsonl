@@ -1,0 +1,23 @@
+{"q": "What is phentermine used for?", "drug": "phentermine", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "Does divalproex have a boxed warning?", "drug": "divalproex", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "Who should not take prochlorperazine?", "drug": "prochlorperazine", "sections": ["contraindications", "boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What are the common side effects of glyburide?", "drug": "glyburide", "sections": ["adverse_reactions", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "What is dapsone used to treat?", "drug": "dapsone", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "How is chlorzoxazone usually dosed?", "drug": "chlorzoxazone", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "What is esmolol used for?", "drug": "esmolol", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What are the contraindications for adenosine?", "drug": "adenosine", "sections": ["contraindications"], "tool": "lookup_drug_label"}
+{"q": "Does norepinephrine have a boxed warning about extravasation?", "drug": "norepinephrine", "sections": ["boxed_warning", "warnings", "warnings_and_cautions"], "tool": "lookup_drug_label"}
+{"q": "How does orlistat work?", "drug": "orlistat", "sections": ["mechanism_of_action", "indications_and_usage"], "tool": "search_documents"}
+{"q": "What serious risk is described in the boxed warning for nefazodone?", "drug": "nefazodone", "sections": ["boxed_warning"], "tool": "lookup_drug_label"}
+{"q": "What drug interactions does pimozide have?", "drug": "pimozide", "sections": ["drug_interactions", "contraindications"], "tool": "lookup_drug_label"}
+{"q": "What is flutamide used for and what is its boxed warning?", "drug": "flutamide", "sections": ["boxed_warning", "indications_and_usage"], "tool": "search_documents"}
+{"q": "Is miglitol taken with meals?", "drug": "miglitol", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "What is letermovir approved to prevent?", "drug": "letermovir", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What infections is tedizolid used for?", "drug": "tedizolid", "sections": ["indications_and_usage"], "tool": "search_documents"}
+{"q": "What are the adverse reactions of mitoxantrone?", "drug": "mitoxantrone", "sections": ["adverse_reactions", "boxed_warning", "warnings_and_cautions", "warnings"], "tool": "search_documents"}
+{"q": "Can droperidol affect the heart rhythm?", "drug": "droperidol", "sections": ["boxed_warning", "warnings", "warnings_and_cautions"], "tool": "search_documents"}
+{"q": "What is the recommended dose of cangrelor?", "drug": "cangrelor", "sections": ["dosage_and_administration"], "tool": "lookup_drug_label"}
+{"q": "Is protriptyline safe for children?", "drug": "protriptyline", "sections": ["use_in_specific_populations", "boxed_warning", "warnings"], "tool": "search_documents"}
+{"q": "What is the dose of apremilast for psoriasis?", "drug": null, "sections": [], "tool": null}
+{"q": "How do I treat a sprained ankle at home?", "drug": null, "sections": [], "tool": null}
+{"q": "What are the side effects of risdiplam?", "drug": null, "sections": [], "tool": null}

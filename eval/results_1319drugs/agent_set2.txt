@@ -1,0 +1,26 @@
+  Can rosuvastatin cause liver problems?              tools=['search_documents'] cited=[1, 2, 4]
+  What is the usual starting dose of metoprolol?      tools=['lookup_drug_label'] cited=[1]
+  Who should not take pantoprazole?                   tools=['lookup_drug_label'] cited=[1]
+  What is prednisone used to treat?                   tools=['search_documents'] cited=[1]
+  What side effects can escitalopram have?            tools=['search_documents'] cited=[1, 2]
+  Does hydrochlorothiazide have a boxed warning?      tools=['lookup_drug_label'] cited=[1]
+  How should albuterol be dosed?                      tools=['lookup_drug_label'] cited=[1]
+  What is cetirizine for?                             tools=['search_documents'] cited=[1, 3, 4]
+  What is insulin glargine for?                       tools=['search_documents'] cited=[1, 2]
+  Is sitagliptin okay for someone with kidney diseas  tools=['search_documents'] cited=[1]
+  Can I take apixaban with aspirin?                   tools=['check_interaction'] cited=[1, 2]
+  Is there a suicide warning on escitalopram?         tools=['lookup_drug_label'] cited=[1]
+  Does montelukast affect mood or behaviour?          tools=['search_documents'] cited=[1, 2, 3]
+  How is levetiracetam dosed?                         tools=['lookup_drug_label'] cited=[1]
+  Is naproxen safe in the third trimester of pregnan  tools=['search_documents'] cited=[1, 3, 4, 5]
+  What are the common adverse reactions of furosemid  tools=['search_documents'] cited=[1, 2]
+  What are the symptoms of the flu?                   refused=yes
+  Is Ozempic safe for weight loss?                    refused=yes
+  How tall is Mount Everest?                          refused=yes
+
+Agent over 16 in-scope questions
+  Tool routing accuracy:      1.00
+  Answers with citations:     1.00
+  All citations valid:        1.00
+  Cites a gold source:        0.88
+Out-of-scope refusal rate:    1.00  (3 questions)
