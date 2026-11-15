@@ -42,5 +42,6 @@ def ask(body: Ask):
         ],
         "invalid_citations": r["invalid"],
         "uncited_statements": r["uncited"],     # factual sentences with no [n]: treat as unverified
+        "unsupported_statements": r.get("unsupported", []),   # cited, but the cited source does not support them
         "tool_calls": r["trace"],
     }

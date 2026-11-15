@@ -668,3 +668,70 @@ def test_label_less_drug_needs_a_real_share_of_its_mentions_to_be_titled(coverag
     assert not coverage.is_covered("tirzepatide")              # 2 / 100: the corpus only names it in passing
     monkeypatch.setattr(coverage, "_mention_docs", lambda name: 165)
     assert not coverage.is_covered("lithium")                  # the real case: 2 titled, 165 mentions
+
+
+# ---- claim-level faithfulness (no model needed for these: sentence/citation pairing and the number check) ----
+
+def test_claims_pair_each_sentence_with_the_citation_that_covers_it():
+    from src.faithfulness import claims
+
+    answer = ("Metformin can cause lactic acidosis in patients with renal impairment. "
+              "The risk is higher in people who drink alcohol heavily [1].\n"
+              "[2] The usual starting dose is 500 mg twice a day with meals.\n"
+              "Please consult a healthcare professional before changing your dose of any medicine.\n"
+              "This long sentence has no citation at all and so it is left to the uncited check.")
+    got = claims(answer)
+    assert got[0] == ("Metformin can cause lactic acidosis in patients with renal impairment.", [1])   # covered by the next sentence's [1]
+    assert got[1][1] == [1] and got[2][1] == [2]            # a leading [2] covers its paragraph
+    assert len(got) == 3                                     # framing and uncited sentences are not claims
+
+
+def test_number_check_flags_a_changed_dose_but_not_formatting_or_number_words():
+    from src.faithfulness import unsupported_numbers
+
+    source = ["The recommended dose is 500 mg twice daily. Do not exceed 4,000 mg in 24 hours."]
+    assert unsupported_numbers("Take 500 mg 2 times a day, up to 4000 mg per day.", source) == []
+    assert unsupported_numbers("Take 650 mg twice daily.", source) == ["650"]
+    assert unsupported_numbers("The maximum is 4,000 mg per 24 hours.", source) == []
+
+
+def test_faithfulness_check_reports_unsupported_sentences(monkeypatch):
+    from src import faithfulness as fa
+
+    monkeypatch.setattr(fa, "nli", lambda claim, premises: (0.9, 0.0) if "lactic" in claim else (0.1, 0.0))
+    sources = [{"text": "Metformin can cause lactic acidosis. The dose is 500 mg."}]
+    answer = ("Metformin can cause lactic acidosis in some patients [1]. "
+              "Metformin is also known to cause severe hair loss in most patients [1]. "
+              "The usual dose of metformin is 850 mg and lactic acidosis is a risk [1].")
+    flagged = fa.check(answer, sources)
+    assert [f["sentence"][:30] for f in flagged] == ["Metformin is also known to cau", "The usual dose of metformin is"]
+    assert flagged[0]["numbers"] == [] and flagged[1]["numbers"] == ["850"]     # one fails entailment, one a number
+
+
+def test_contradicted_sentence_is_flagged_even_when_it_copies_the_source_words(monkeypatch):
+    from src import faithfulness as fa
+
+    monkeypatch.setattr(fa, "nli", lambda claim, premises: (0.05, 0.95))
+    sources = [{"text": "Naproxen should not be used in the third trimester of pregnancy."}]
+    flagged = fa.check("Naproxen should be used in the third trimester of pregnancy [1].", sources)
+    assert len(flagged) == 1 and flagged[0]["overlap"] == 1.0 and flagged[0]["contradiction"] == 0.95
+
+
+def test_repair_citations_repoints_a_marker_to_the_source_that_contains_the_sentence():
+    from src.faithfulness import repair_citations
+
+    sources = [{"text": "Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism."},
+               {"text": "Common adverse reactions of apixaban are bleeding and bruising in most patients."}]
+    answer = ("Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism [2]. "
+              "Common adverse reactions of apixaban are bleeding and bruising [2].")
+    fixed, fixes = repair_citations(answer, sources)
+    assert fixed.startswith("Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism [1].")
+    assert fixed.endswith("bleeding and bruising [2].")                # a correct citation is left alone
+    assert fixes == [{"sentence": "Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism.",
+                      "was": [2], "now": [1]}]
+    # a paraphrase that no source contains is not re-pointed (it is left for the unsupported check)
+    assert repair_citations("Apixaban is a wonderful medicine that everybody should take daily [2].", sources)[1] == []
+    # a changed number blocks the repair: the other source does not support "20 mg"
+    sources[0]["text"] += " The dose is 5 mg."
+    odd = "Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism at 20 mg [2]."
+    assert repair_citations(odd, sources)[1] == []

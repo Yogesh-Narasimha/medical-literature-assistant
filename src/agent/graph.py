@@ -17,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agent.coverage import coverage, is_underspecified
 from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS, implied_drugs
 from src.citations import has_citation, parse_citations, strip_invalid, strip_markers, uncited_sentences
-from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_OPTIONS, OLLAMA_HOST
+from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_OPTIONS, OLLAMA_HOST, USE_FAITHFULNESS
 from src.tracing import log_trace
 
 NOT_FOUND = "I could not find this in the indexed documents."
@@ -188,6 +188,27 @@ def routing_hint(question: str) -> str:
 _graph = None
 
 
+def _repair_citations(answer: str, sources: list[dict]) -> tuple[str, list[dict]]:
+    if not USE_FAITHFULNESS:
+        return answer, []
+    try:
+        from src.faithfulness import repair_citations
+        return repair_citations(answer, sources)
+    except Exception:
+        return answer, []
+
+
+def _unsupported(answer: str, sources: list[dict]) -> list[dict]:
+    """Faithfulness check, if enabled and torch is available. A failure here must never break an answer."""
+    if not USE_FAITHFULNESS:
+        return []
+    try:
+        from src.faithfulness import check
+        return check(answer, sources)
+    except Exception:
+        return []
+
+
 def run_agent(question: str) -> dict:
     """Returns {question, answer, cited, invalid, sources, trace, answered}."""
     global _graph
@@ -197,7 +218,8 @@ def run_agent(question: str) -> dict:
     if is_underspecified(question, drugs_named=bool(implied_drugs(question))):
         missing = []
         result = {
-            "question": question, "cited": [], "invalid": [], "uncited": [], "sources": [], "answered": False,
+            "question": question, "cited": [], "invalid": [], "uncited": [], "unsupported": [], "sources": [],
+            "answered": False,
             "answer": f"{NOT_FOUND} The question does not name a drug. Ask about a specific drug, for example "
                       "\"What are the side effects of metformin?\".",
             "trace": [{"tool": "underspecified_check", "args": {}, "n_results": 0,
@@ -212,7 +234,8 @@ def run_agent(question: str) -> dict:
         # that merely mention it (lithium appears in other drugs' interaction sections), which would produce a
         # confident answer to a different question. Say so instead.
         result = {
-            "question": question, "cited": [], "invalid": [], "uncited": [], "sources": [], "answered": False,
+            "question": question, "cited": [], "invalid": [], "uncited": [], "unsupported": [], "sources": [],
+            "answered": False,
             "answer": f"{NOT_FOUND} The indexed documents have no label or abstract for {', '.join(missing)}.",
             "trace": [{"tool": "coverage_check", "args": {"missing": missing}, "n_results": 0,
                        "note": "named drug not in index; refused before retrieval", "ms": 0}],
@@ -250,11 +273,17 @@ def run_agent(question: str) -> dict:
         # The 3B model sometimes still names a drug to take. A fixed notice makes the limit unmistakable.
         answer = ("I can't recommend what you personally should take; a clinician or pharmacist should decide. "
                   "What the indexed sources say:\n\n" + answer)
+    recited = []
+    if n and NOT_FOUND.lower() not in answer.lower():
+        answer, recited = _repair_citations(answer, state["sources"])   # a marker that names the wrong source
     cited, invalid = parse_citations(answer, n)
+    unsupported = _unsupported(answer, state["sources"]) if n and NOT_FOUND.lower() not in answer.lower() else []
     result = {
         "question": question, "answer": answer, "cited": cited,
         "invalid": invalid,
         "uncited": uncited_sentences(answer) if n and NOT_FOUND.lower() not in answer.lower() else [],
+        "unsupported": unsupported,         # cited sentences their cited source does not support
+        "recited": recited,                 # citations re-pointed to the source that contains the sentence
         "sources": state["sources"], "trace": state["trace"],
         "answered": NOT_FOUND.lower() not in answer.lower(),
         "stats": {"total_ms": round((time.perf_counter() - t_start) * 1000), "llm_calls": state["llm_calls"],
@@ -281,6 +310,9 @@ def warmup() -> dict:
     lap("indexes")
     retriever.search("warmup ibuprofen side effects", 5)      # embeds (loads the embedding model) + reranks
     lap("embed_and_rerank")
+    _unsupported("Ibuprofen can cause stomach bleeding in some patients who take it [1].",
+                 [{"text": "Ibuprofen may cause stomach bleeding."}])      # loads the faithfulness model
+    lap("faithfulness_model")
     _client.chat(model=LLM_MODEL, messages=[{"role": "user", "content": "hi"}],
                  options={"num_predict": 1}, keep_alive="30m")
     lap("llm")

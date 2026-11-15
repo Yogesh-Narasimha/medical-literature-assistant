@@ -1,0 +1,41 @@
+79 answers -> 577 labelled claims (312 dev, 265 test)
+citation repair re-pointed 12 of 239 cited sentences, in 6 answers
+cut-offs chosen on dev: entailment < 0.5, contradiction >= 0.7, overlap < 0.5
+
+numbers + contradiction + (overlap or entailment)  [used]  (test split)
+  real           19/111 = 0.17  flagged (upper bound on false alarms)
+  wrong-source  111/111 = 1.00  caught
+  wrong-number   17/20  = 0.85  caught
+  negated        12/23  = 0.52  caught
+
+entailment only (flag if < 0.5)  (test split)
+  real           68/111 = 0.61  flagged (upper bound on false alarms)
+  wrong-source  111/111 = 1.00  caught
+  wrong-number   18/20  = 0.90  caught
+  negated        19/23  = 0.83  caught
+
+number check only  (test split)
+  real            1/111 = 0.01  flagged (upper bound on false alarms)
+  wrong-source   18/111 = 0.16  caught
+  wrong-number   17/20  = 0.85  caught
+  negated         0/23  = 0.00  caught
+
+Real claims flagged on the test split (read these: a flag is either a false alarm or a real problem):
+  [entail 0.29 contra 0.04 overlap 0.43] The FDA label for warfarin mentions that it can interact with several drugs.
+  [entail 0.03 contra 0.71 overlap 1.00] Hypothyroidism: As replacement therapy in primary (thyroidal), secondary (pituitary), and tertiary (hypothalamic) congenital or acquired hypothyroidism.
+  [entail 0.01 contra 0.19 overlap 0.06] Pituitary Thyrotropin (Thyroid‑Stimulating Hormone, TSH) Suppression: As an adjunct to surgery and radioiodine therapy in the management of thyrotropin-dependent well-differentiated thyroid cancer.
+  [entail 0.09 contra 0.11 overlap 0.35] Geriatric use: Initiate levothyroxine sodium therapy at less than the full replacement dose due to the increased prevalence of cardiovascular disease among the elderly.
+  [entail 0.04 contra 0.04 overlap 0.07 num:3] Adjunctive therapy in the treatment of partial onset seizures, with and without secondary generalization, in adults and pediatric patients 3 years and older with epilepsy.
+  [entail 0.05 contra 0.24 overlap 0.25] It is recommended to start with a lower dose and gradually increase it over 4 to 6 weeks.
+  [entail 0.04 contra 0.21 overlap 0.39] Gastrointestinal adverse reactions such as anorexia, nausea, vomiting, diarrhea, glossitis, dysphagia, enterocolitis, inflammatory lesions (with monilial overgrowth) in the anogenital region, and pancreatitis have been observed.
+  [entail 0.03 contra 0.23 overlap 0.20] Skin adverse reactions such as maculopapular and erythematous rashes, Stevens-Johnson syndrome, toxic epidermal necrolysis, exfoliative dermatitis, erythema multiforme, and fixed drug eruption have been reported.
+  [entail 0.04 contra 0.24 overlap 0.25] Esophagitis and esophageal ulcerations have been reported in patients receiving capsule and tablet forms of drugs in the tetracycline-class.
+  [entail 0.03 contra 0.32 overlap 0.14] Fixed drug eruptions have occurred with doxycycline and have been associated with worsening severity upon subsequent administrations, including generalized bullous fixed drug eruption.
+  [entail 0.04 contra 0.38 overlap 0.20] Severe skin reactions such as exfoliative dermatitis, erythema multiforme, Stevens-Johnson syndrome, toxic epidermal necrolysis, and drug reaction with eosinophilia and systemic symptoms (DRESS) have been reported.
+  [entail 0.03 contra 0.19 overlap 0.10] Women of childbearing age who are overweight or have a history of IH are at greater risk for developing tetracycline associated IH.
+  [entail 0.01 contra 0.08 overlap 0.00] You should be cautious when taking sertraline with ibuprofen.
+  [entail 0.22 contra 0.12 overlap 0.29] The FDA label mentions that rosuvastatin can cause liver problems.
+  [entail 0.19 contra 0.01 overlap 0.44] The label recommends monitoring and providing supportive care for patients experiencing these events.
+  [entail 0.56 contra 0.76 overlap 0.92] [naproxen] is known to cause premature closure of the fetal ductus arteriosus and neonatal renal impairment, which may lead to oligohydramnios and neonatal renal impairment.
+  [entail 0.05 contra 0.75 overlap 1.00] If naproxen is necessary during pregnancy, it should be used at the lowest effective dose and for the shortest duration possible.
+  [entail 0.07 contra 0.72 overlap 0.87] Monitoring with ultrasound is recommended if naproxen treatment extends beyond 48 hours, and if oligohydramnios occurs, treatment should be discontinued and follow-up should be according to clinical practice.

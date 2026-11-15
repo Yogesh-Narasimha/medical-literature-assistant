@@ -27,6 +27,8 @@ def to_record(result: dict) -> dict:
         "cited": result["cited"],
         "invalid_citations": result["invalid"],
         "uncited_statements": len(result.get("uncited", [])),
+        "unsupported_statements": len(result.get("unsupported", [])),
+        "recited": len(result.get("recited", [])),
         "uncited_examples": [s[:200] for s in result.get("uncited", [])[:5]],     # to audit the checker
         "tools": [{"tool": t["tool"], "args": t["args"], "n_results": t["n_results"],
                    "ms": t.get("ms"), "note": t.get("note", "")[:200]} for t in result["trace"]],
@@ -94,5 +96,6 @@ def summarize(records: list[dict]) -> dict:
         "corrective_rewrite_rate": round(sum(1 for r in records if any("rewritten" in t["note"] for t in r["tools"])) / n, 3),
         "runs_with_invalid_citations": sum(1 for r in records if r["invalid_citations"]),
         "runs_with_uncited_statements": sum(1 for r in records if r["uncited_statements"]),
+        "runs_with_unsupported_statements": sum(1 for r in records if r.get("unsupported_statements")),
         "tool_usage": tools,
     }

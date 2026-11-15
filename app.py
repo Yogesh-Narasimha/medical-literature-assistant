@@ -37,6 +37,14 @@ if question:
     if r["uncited"]:
         st.warning("Statements below have no source and should be treated as unverified:\n\n"
                    + "\n".join(f"- {s}" for s in r["uncited"]))
+    if r.get("unsupported"):
+        st.warning("These cited statements were NOT confirmed by the source they cite (check the source text):
+
+"
+                   + "
+".join(f"- {u['sentence']} (cites {u['cited']}"
+                               + (f"; numbers not in the source: {', '.join(u['numbers'])}" if u["numbers"] else "")
+                               + ")" for u in r["unsupported"]))
     if r["cited"]:
         st.subheader("Sources")
         for n in r["cited"]:

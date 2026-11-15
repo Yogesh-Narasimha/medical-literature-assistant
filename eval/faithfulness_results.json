@@ -1,0 +1,77 @@
+{
+ "cutoffs": {
+  "entailment": 0.5,
+  "contradiction": 0.7,
+  "overlap": 0.5
+ },
+ "n_answers": 79,
+ "n_claims": 577,
+ "n_real_claims": 239,
+ "citations_repaired": 12,
+ "numbers + contradiction + (overlap or entailment)  [used]": {
+  "real": {
+   "n": 111,
+   "flagged": 19,
+   "rate": 0.171
+  },
+  "wrong-source": {
+   "n": 111,
+   "flagged": 111,
+   "rate": 1.0
+  },
+  "wrong-number": {
+   "n": 20,
+   "flagged": 17,
+   "rate": 0.85
+  },
+  "negated": {
+   "n": 23,
+   "flagged": 12,
+   "rate": 0.522
+  }
+ },
+ "entailment only (flag if < 0.5)": {
+  "real": {
+   "n": 111,
+   "flagged": 68,
+   "rate": 0.613
+  },
+  "wrong-source": {
+   "n": 111,
+   "flagged": 111,
+   "rate": 1.0
+  },
+  "wrong-number": {
+   "n": 20,
+   "flagged": 18,
+   "rate": 0.9
+  },
+  "negated": {
+   "n": 23,
+   "flagged": 19,
+   "rate": 0.826
+  }
+ },
+ "number check only": {
+  "real": {
+   "n": 111,
+   "flagged": 1,
+   "rate": 0.009
+  },
+  "wrong-source": {
+   "n": 111,
+   "flagged": 18,
+   "rate": 0.162
+  },
+  "wrong-number": {
+   "n": 20,
+   "flagged": 17,
+   "rate": 0.85
+  },
+  "negated": {
+   "n": 23,
+   "flagged": 0,
+   "rate": 0.0
+  }
+ }
+}

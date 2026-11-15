@@ -1,16 +1,61 @@
 # Medical Literature Assistant
 
-An agentic RAG system that answers medical and drug questions from FDA drug labels and PubMed abstracts, with citations for every answer. Everything runs locally with [Ollama](https://ollama.com), so no API keys are needed.
+[![tests](https://github.com/Yogesh-Narasimha/medical-literature-assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/Yogesh-Narasimha/medical-literature-assistant/actions/workflows/tests.yml)
 
-> Status: **working end to end** (API and UI both run-tested locally) on **1,319 FDA drug labels, 6,316 PubMed abstracts and 56,888 chunks**. Hybrid retrieval with a drug-aware boost and a cross-encoder reranker, a LangGraph ReAct agent with citation checks and refusals, four evaluation sets, a FastAPI backend and a Streamlit UI. See Results for what was measured at each scale and where it still fails.
+A question-answering assistant for drug information that answers **only from FDA drug labels and PubMed
+abstracts**, cites the source of every statement, checks that the cited source really says it, and refuses when the
+documents do not cover the question. It runs entirely on one laptop GPU with open models
+([Ollama](https://ollama.com)), so there are no API keys and no data leaves the machine.
+
+| | Measured (details and caveats in [Results](#results)) |
+|---|---|
+| Corpus | 1,319 FDA drug labels, 6,316 PubMed abstracts, 56,888 chunks; grown from 40 drugs in three measured steps |
+| Retrieval | strict MRR 0.74, Recall@5 0.88 at 1,319 drugs; plain embedding search on the same index: 0.49 and 0.70 |
+| Agent | picks the right tool for 0.95-1.00 of questions; refuses 13 of 13 out-of-scope questions across three question sets |
+| Held-out questions | 23 questions on newly added drugs, written before those drugs were indexed: first run cited the expected label section for 0.85 |
+| Adversarial set | 30 of 31 (misspellings, brand names, false premises, prompt injection, drugs not in the index); 20 of 25 before the fixes it led to |
+| Faithfulness check | on held-out claims: catches 100% of sentences paired with the wrong source, 85% of changed numbers, 52% of flipped negations; flags 17% of real cited sentences |
+| Speed | first-stage retrieval 34 ms; median answer about 5 s on an RTX 3050 (6 GB); optional HNSW index searches 11x faster at 98% recall |
+| Engineering | 66 unit tests run in CI, incremental index build, FastAPI service, Streamlit UI, JSON traces |
+
+What makes it more than a tutorial RAG:
+
+- **It was scaled and re-measured, and the failures are written down.** Plain retrieval lost a quarter of its
+  accuracy as the corpus grew 31x; a drug-aware boost kept the pipeline close to where it started. Scaling also
+  exposed a 10x slowdown I had written myself and two regressions in the refusal logic. Each has a test.
+- **It checks its own citations.** One in five cited sentences did not match the source it cited, usually because
+  the small model numbers its list items [1], [2], [3] instead of citing where each fact came from. The assistant
+  now re-points those citations and flags sentences no retrieved source supports.
+- **It refuses.** A question about a drug with no label in the index is refused before retrieval, because search
+  would otherwise return other drugs' labels that merely mention it.
+- **Negative results are kept.** Embedding fine-tuning did not beat the stock model, a 7B model was not worth 2.7x
+  the latency, and at the largest scale the cross-encoder reranker no longer adds measurable accuracy.
+
+Limits, stated once here: I wrote every evaluation question myself, the generator is a 3-billion-parameter model
+that varies between runs, and this is a learning project, not a medical device.
 
 ![Streamlit UI: cited answer, expandable sources, agent trace](docs/ui-screenshot.png)
 
 ## How it works
 
-```
-Documents (FDA labels, PubMed) -> chunk -> embed (nomic-embed-text) -> FAISS index
-User question -> embed query -> top-k similar chunks -> (Day 2+) LLM answer with citations
+```mermaid
+flowchart LR
+    subgraph Ingest
+        A[openFDA labels<br/>PubMed abstracts] --> B[Section-aware<br/>chunking] --> C[nomic-embed-text<br/>embeddings] --> D[(FAISS flat / HNSW<br/>+ BM25 inverted index)]
+    end
+    subgraph Answer
+        Q[Question] --> COV{Drug in index?<br/>specific enough?}
+        COV -- no --> R[Refuse / ask]
+        COV -- yes --> AG[LangGraph ReAct agent<br/>qwen2.5:3b]
+        AG --> T1[check_interaction]
+        AG --> T2[lookup_drug_label]
+        AG --> T3[search_documents]
+        T3 --> H[Hybrid: BM25 + dense, RRF<br/>drug-aware boost<br/>cross-encoder rerank<br/>corrective rewrite]
+        D --> H
+        T1 & T2 & H --> AN[Cited answer]
+        AN --> V[Citation validation and repair<br/>number check + NLI entailment]
+        V --> OUT[Answer + sources<br/>+ flagged statements]
+    end
 ```
 
 - **Section-aware chunking:** each label section (for example `drug_interactions`) is chunked on its own, with overlap and sentence-boundary snapping, so a citation points to one precise section.
@@ -59,6 +104,7 @@ python -m scripts.agent "Can I take ibuprofen with warfarin?"   # ReAct agent wi
 uvicorn src.api:app --reload                                     # POST /ask, docs at /docs
 streamlit run app.py                                             # web UI
 python -m scripts.bench_ann                                      # approximate (HNSW) vs exact index
+python -m eval.faithfulness                                      # claim-level faithfulness benchmark
 python -m eval.run_eval retrieval                                # Recall@k, MRR, score thresholds
 python -m eval.run_eval agent                                    # routing, citations, refusals
 python -m scripts.traces                                         # latency / refusal / tool-usage summary of past runs
@@ -80,7 +126,7 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 61 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
+python -m pytest -q          # 66 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
                              # citation checks, coverage check, drug-name matching, tracing, train/test split)
 ```
 
@@ -209,10 +255,11 @@ qwen2.5:3b (the default), final code:
 | All citations valid | 1.00 | 0.98 | 0.95 | 0.94 | 1.00 | 1.00 | 0.90 | 0.95 |
 | Answers citing a gold source | 0.95 | 0.88 | 0.88 | 0.88 | 0.94 | 0.88 | 0.85 | 0.90 |
 | Out-of-scope refusal | 7/7 | 7/7 | 7/7 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
-| Median / p95 latency (RTX 3050 laptop GPU) | 4.3 / 13.8 s | 4.9 / 12.7 s | 4.5 / 15.9 s | 5.0 / 22.2 s | 7.1 / 32.7 s | 4.9 / 31.2 s | 6.9 / 10.7 s | 4.6 / 8.2 s |
+| Median / p95 latency (RTX 3050 laptop GPU) | 4.3 / 13.8 s | 4.9 / 12.7 s | 5.0 / 11.9 s | 5.0 / 22.2 s | 7.1 / 32.7 s | 4.5 / 35.7 s | 6.9 / 10.7 s | 5.9 / 11.0 s |
 | Runs with flagged uncited statements | 11 / 50 | 12 / 50 | 12 / 50 | 5 / 19 | 4 / 19 | 4 / 19 | 5 / 23 | 2 / 23 |
+| Runs with a cited statement the source does not support | | | 10 / 50 | | | 4 / 19 | | 2 / 23 |
 
-(The 298-drug agent numbers are in the git history; they sit between the 40 and 744 columns.) Across the
+(The 298-drug agent numbers are in the git history; they sit between the 40 and 744 columns. The 1,319 columns for sets 1 and 2 and the set 3 rerun were measured with the faithfulness check switched on; it changed no other metric and its cost is inside the run-to-run noise of the latency.) Across the
 40-to-1,319-drug scale-up the agent lost about three questions' worth on set 1's gold-source rate (0.95 to 0.88)
 and two answers on set 1 lost their citations (1.00 to 0.95); the model is not perfectly repeatable, and two runs
 of set 3 on the same code differ by about one question. Set 3 is the cleanest evidence: its first run was on
@@ -235,6 +282,54 @@ The "uncited statement" flag is a heuristic (a citation at the start or end of a
 roughly a quarter of runs, still catches benign conclusion sentences, and should be read as "check this", not "this
 is wrong". Earlier versions of this README reported different numbers on smaller question sets; each step was
 re-measured, and the LLM is not perfectly repeatable between runs.
+
+#### Does the cited source actually say it? Claim-level faithfulness (`src/faithfulness.py`, `python -m eval.faithfulness`)
+
+Checking that `[2]` points at a real source does not show that source 2 supports the sentence. To measure that, I
+saved the agent's answers to the 79 in-scope questions of sets 1-3 (239 cited sentences) and compared each
+sentence with the text of the source it cites.
+
+**What the real answers looked like.** 47 of the 239 cited sentences (20%) shared under half of their content words
+with the source they cited. 25 of those were near-verbatim from a *different* retrieved source: the model writes a
+list and numbers the items [1], [2], [3] in order, instead of citing where each item came from. The rest were
+paraphrases, summaries, or unsupported.
+
+**What the assistant does now.**
+1. *Citation repair.* If a sentence carries its own marker, barely overlaps the cited source, and is near-verbatim
+   (numbers included) in another retrieved source, the marker is re-pointed. On the 79 saved answers this changed
+   12 citations in 6 answers. Sentences that only inherit a citation from a later sentence are not rewritten.
+2. *Number check.* Every number in a cited sentence must appear in a cited source ("twice" counts as 2).
+3. *Entailment.* A small NLI cross-encoder (`cross-encoder/nli-MiniLM2-L6-H768`) scores each sentence against
+   overlapping windows of its cited source. A sentence is flagged if a number is missing, or the source contradicts
+   it (probability at least 0.7), or it is neither near-verbatim (word overlap under 0.5) nor entailed (under 0.5).
+   Flagged sentences are shown as a warning in the UI and returned by the API as `unsupported_statements`; the
+   answer text is not changed.
+
+**How well it works.** There is no human-labelled data, so the benchmark is built from the real answers: each real
+sentence is also paired with a chunk of a different drug's label (*wrong source*), given one changed number
+(*wrong number*), or has a negation flipped (*negated*). Those three are unsupported by construction. Questions
+are split in half; the three cut-offs were chosen on one half and the table is the other half (265 claims).
+
+| Test half | Real sentences flagged | Wrong source caught | Wrong number caught | Negated caught |
+|---|---|---|---|---|
+| Entailment score alone (flag if under 0.5) | 69 / 111 = 0.62 | 111 / 111 | 18 / 20 | 19 / 23 = 0.83 |
+| Number check alone | 1 / 111 = 0.01 | 18 / 111 | 17 / 20 = 0.85 | 0 / 23 |
+| **Numbers + contradiction + (overlap or entailment), used** | **19 / 111 = 0.17** | **111 / 111 = 1.00** | **17 / 20 = 0.85** | **12 / 23 = 0.52** |
+
+Reading it honestly:
+- The NLI model alone is unusable here: it flags 62% of real sentences, because the answers copy long label
+  fragments ("for the treatment of DVT and PE, and for the reduction in the risk of...") that are not full
+  sentences. Treating near-verbatim text as supported is what makes the check usable, and it is also why negation
+  detection is weak: a flipped sentence still shares its words with the source, so only the contradiction score
+  can catch it, and it catches about half.
+- "Real sentences flagged" is an upper bound on false alarms, not a false-alarm rate: the real sentences are not
+  guaranteed to be supported. Of the 35 flagged across all 239, 12 are text that sits in another retrieved source
+  (a wrong citation the repair step could not safely rewrite), 16 overlap no retrieved source well (paraphrase or
+  genuinely unsupported; I have not hand-labelled them), 6 are flagged by the contradiction score (the ones I read
+  were false alarms on near-verbatim text) and 1 by the number check.
+- The synthetic negatives are easier than real hallucinations, and 20 and 23 examples are small samples.
+- In the agent runs above, at least one statement is flagged in 10 of 50, 4 of 19 and 2 of 23 runs. Like the uncited
+  flag, it means "read the source", not "this is wrong".
 
 #### Scaling (40, 298, 744, 1,319 drugs) and an adversarial question set
 
@@ -468,6 +563,8 @@ close before anything like it served real users; none of them is built here.
 - [x] Days 6–7: embedding fine-tuning experiment, measured (did not beat nomic-embed-text; see results)
 - [x] Day 8 (part): corrective RAG (grade, rewrite, refuse), Streamlit UI
 - [x] Day 8 (rest): run tracing (local JSON + optional LangFuse export, tested against a stand-in server)
+- [x] Claim-level faithfulness: citation repair, number check and NLI entailment, with a benchmark built from real answers
+- [x] CI: unit tests on every push (GitHub Actions)
 - [x] Scaled 40 -> 298 -> 744 -> 1,319 drugs (56,888 chunks) with a 31-question adversarial set (30/31) and a held-out set 3; faster query path, incremental index build, measured HNSW index, startup warm-up
 - [ ] Not done: build and run the Docker image (needs admin + WSL2, unavailable here); validate on a larger, independently written question set
 

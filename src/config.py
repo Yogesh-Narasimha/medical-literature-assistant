@@ -401,3 +401,4 @@ LABEL_SNIPPET_CHARS = 2500   # how much of a label section the lookup tool retur
 
 # ---- Reranking ----
 USE_RERANKER = True     # cross-encoder over the top 20 candidates; needs torch (falls back silently without it)
+USE_FAITHFULNESS = True  # check each cited sentence against its cited source (src/faithfulness.py); needs torch
