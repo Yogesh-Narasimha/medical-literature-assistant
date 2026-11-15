@@ -735,3 +735,16 @@ def test_repair_citations_repoints_a_marker_to_the_source_that_contains_the_sent
     sources[0]["text"] += " The dose is 5 mg."
     odd = "Apixaban is indicated for the treatment of deep vein thrombosis and pulmonary embolism at 20 mg [2]."
     assert repair_citations(odd, sources)[1] == []
+
+
+def test_every_python_file_compiles():
+    """app.py, scripts/ and eval/ are not imported by the other tests; a syntax error in one of them once reached
+    the repository. Compile them all."""
+    import py_compile
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    files = [root / "app.py", *[p for d in ("src", "scripts", "eval") for p in (root / d).rglob("*.py")]]
+    assert len(files) > 20
+    for path in files:
+        py_compile.compile(str(path), doraise=True)

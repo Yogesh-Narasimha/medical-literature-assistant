@@ -16,7 +16,7 @@ documents do not cover the question. It runs entirely on one laptop GPU with ope
 | Adversarial set | 30 of 31 (misspellings, brand names, false premises, prompt injection, drugs not in the index); 20 of 25 before the fixes it led to |
 | Faithfulness check | on held-out claims: catches 100% of sentences paired with the wrong source, 85% of changed numbers, 52% of flipped negations; flags 17% of real cited sentences |
 | Speed | first-stage retrieval 34 ms; median answer about 5 s on an RTX 3050 (6 GB); optional HNSW index searches 11x faster at 98% recall |
-| Engineering | 66 unit tests run in CI, incremental index build, FastAPI service, Streamlit UI, JSON traces |
+| Engineering | 67 unit tests run in CI, incremental index build, FastAPI service, Streamlit UI, JSON traces |
 
 What makes it more than a tutorial RAG:
 
@@ -126,7 +126,7 @@ Try different chunk sizes: `python -m src.ingest.chunk --size 300 --overlap 60`,
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 66 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
+python -m pytest -q          # 67 unit tests, no Ollama or index needed (chunking, BM25/hybrid fusion, reranking, corrective RAG,
                              # citation checks, coverage check, drug-name matching, tracing, train/test split)
 ```
 
