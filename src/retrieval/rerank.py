@@ -41,7 +41,10 @@ class RerankedRetriever:
         candidates = self.base.search(query, max(self.pool, k))
         if not candidates:
             return []
-        scores = self._load().predict([(query, passage_for_reranking(h.chunk, self.max_chars)) for h in candidates],
-                                      show_progress_bar=False)
+        # Score against the query with brand names expanded to generics (if the base retriever can): passages are
+        # prefixed "FDA label: sertraline", which a bare "Zoloft" question would not match.
+        scored_query = getattr(self.base, "expand", lambda q: q)(query)
+        scores = self._load().predict([(scored_query, passage_for_reranking(h.chunk, self.max_chars))
+                                       for h in candidates], show_progress_bar=False)
         order = sorted(range(len(candidates)), key=lambda i: -float(scores[i]))
         return [candidates[i] for i in order[:k]]

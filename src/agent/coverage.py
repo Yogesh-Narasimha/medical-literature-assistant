@@ -59,13 +59,43 @@ def is_covered(name: str) -> bool:
     return any(name in term or (len(term) > 3 and term in name) for term in _covered_terms())
 
 
-def missing_subject(question: str) -> list[str]:
-    """Drug names to report as missing, but ONLY when no drug in the question is covered.
+def coverage(question: str) -> tuple[list[str], list[str]]:
+    """(missing, uncovered) from ONE extraction call.
 
-    "Side effects of lithium" -> ["lithium"] (the question is about a drug we have nothing on).
-    "Lithium with ibuprofen"  -> []          (ibuprofen's label can legitimately discuss lithium).
-    "Vitamin B12 with metformin" -> []       (metformin is covered and its label discusses B12)."""
+    missing:   the named drugs, but ONLY when no drug in the question is covered -> refuse.
+    uncovered: named drugs the index has nothing on, when at least one other named drug IS covered -> answer,
+               but tell the reader the answer says nothing reliable about these.
+
+    "Side effects of lithium" -> (["lithium"], [])           the question is about a drug we have nothing on
+    "Lithium with ibuprofen"  -> ([], ["lithium"])           ibuprofen's label can discuss lithium, but there
+                                                             is no lithium label to answer from
+    "Vitamin B12 with metformin" -> ([], ["vitamin b12"])    likewise"""
     names = extract_drugs(question)
-    if names and not any(is_covered(n) for n in names):
-        return names
-    return []
+    if not names:
+        return [], []
+    covered = [n for n in names if is_covered(n)]
+    if not covered:
+        return names, []
+    return [], [n for n in names if n not in covered]
+
+
+def missing_subject(question: str) -> list[str]:
+    """Drug names to report as missing, but ONLY when no drug in the question is covered."""
+    return coverage(question)[0]
+
+
+_GENERIC = {"side", "effects", "effect", "drug", "drugs", "interaction", "interactions", "dose", "doses",
+            "dosage", "warnings", "warning", "medicine", "medicines", "medication", "medications",
+            "contraindications", "uses", "use", "adverse", "reactions", "safety", "safe", "pills", "pill"}
+
+
+_FILLER = {"what", "are", "is", "the", "of", "any", "some", "about", "tell", "me", "list", "show", "give", "and"}
+
+
+def is_underspecified(question: str, drugs_named: bool) -> bool:
+    """A very short question made only of generic words ("drug interactions", "side effects") that names no
+    drug or class. Retrieval returns whichever label scores highest and the answer is arbitrary, so ask for a
+    specific drug instead. Short topical queries ("serotonin syndrome") are NOT caught: they have non-generic words."""
+    words = [w.strip("?.!,").lower() for w in question.split()]
+    return (not drugs_named and 0 < len(words) <= 5 and all(w in _GENERIC | _FILLER for w in words)
+            and any(w in _GENERIC for w in words))

@@ -37,13 +37,56 @@ SYNONYMS = {
     "januvia": "sitagliptin", "jardiance": "empagliflozin", "lantus": "insulin glargine",
     "lipitor": "atorvastatin", "crestor": "rosuvastatin", "norvasc": "amlodipine", "zestril": "lisinopril",
     "prinivil": "lisinopril", "cozaar": "losartan", "lopressor": "metoprolol", "toprol": "metoprolol",
-    "prilosec": "omeprazole", "nexium": "omeprazole", "protonix": "pantoprazole", "synthroid": "levothyroxine",
+    "prilosec": "omeprazole", "nexium": "esomeprazole", "protonix": "pantoprazole", "synthroid": "levothyroxine",
     "deltasone": "prednisone", "cipro": "ciprofloxacin", "zithromax": "azithromycin", "vibramycin": "doxycycline",
     "zoloft": "sertraline", "prozac": "fluoxetine", "lexapro": "escitalopram", "wellbutrin": "bupropion",
     "xanax": "alprazolam", "neurontin": "gabapentin", "keppra": "levetiracetam", "singulair": "montelukast",
     "ventolin": "albuterol", "proair": "albuterol", "zyrtec": "cetirizine", "lasix": "furosemide",
     "aldactone": "spironolactone", "entresto": "sacubitril and valsartan", "ultram": "tramadol",
     "aspirin": "aspirin", "bayer": "aspirin",
+    # well-known brands of the drugs added when the index grew to ~300 drugs
+    "xarelto": "rivaroxaban", "brilinta": "ticagrelor", "pradaxa": "dabigatran", "lovenox": "enoxaparin",
+    "zocor": "simvastatin", "zetia": "ezetimibe", "tricor": "fenofibrate", "coreg": "carvedilol",
+    "tenormin": "atenolol", "lotensin": "benazepril", "benicar": "olmesartan", "avapro": "irbesartan",
+    "micardis": "telmisartan", "diovan": "valsartan", "cardizem": "diltiazem", "lanoxin": "digoxin",
+    "celebrex": "celecoxib", "mobic": "meloxicam", "voltaren": "diclofenac", "percocet": "oxycodone",
+    "oxycontin": "oxycodone", "vicodin": "hydrocodone", "suboxone": "buprenorphine", "narcan": "naloxone",
+    "flexeril": "cyclobenzaprine", "zanaflex": "tizanidine", "pepcid": "famotidine", "zofran": "ondansetron",
+    "reglan": "metoclopramide", "imodium": "loperamide", "augmentin": "amoxicillin and clavulanate",
+    "keflex": "cephalexin", "levaquin": "levofloxacin", "bactrim": "sulfamethoxazole and trimethoprim",
+    "flagyl": "metronidazole", "diflucan": "fluconazole", "valtrex": "valacyclovir", "zovirax": "acyclovir",
+    "tamiflu": "oseltamivir", "plaquenil": "hydroxychloroquine", "celexa": "citalopram", "paxil": "paroxetine",
+    "effexor": "venlafaxine", "cymbalta": "duloxetine", "remeron": "mirtazapine", "desyrel": "trazodone",
+    "elavil": "amitriptyline", "seroquel": "quetiapine", "zyprexa": "olanzapine", "risperdal": "risperidone",
+    "abilify": "aripiprazole", "haldol": "haloperidol", "clozaril": "clozapine", "lamictal": "lamotrigine",
+    "depakote": "valproic acid", "tegretol": "carbamazepine", "trileptal": "oxcarbazepine",
+    "topamax": "topiramate", "dilantin": "phenytoin", "lyrica": "pregabalin", "klonopin": "clonazepam",
+    "ativan": "lorazepam", "valium": "diazepam", "ambien": "zolpidem", "buspar": "buspirone",
+    "ritalin": "methylphenidate", "adderall": "amphetamine", "strattera": "atomoxetine",
+    "provigil": "modafinil", "aricept": "donepezil", "namenda": "memantine", "exelon": "rivastigmine",
+    "imitrex": "sumatriptan", "maxalt": "rizatriptan", "claritin": "loratadine", "allegra": "fexofenadine",
+    "benadryl": "diphenhydramine", "flonase": "fluticasone", "pulmicort": "budesonide",
+    "spiriva": "tiotropium", "medrol": "methylprednisolone", "decadron": "dexamethasone",
+    "trexall": "methotrexate", "imuran": "azathioprine", "cellcept": "mycophenolate",
+    "neoral": "cyclosporine", "sandimmune": "cyclosporine", "prograf": "tacrolimus", "afinitor": "everolimus",
+    "arava": "leflunomide", "xeljanz": "tofacitinib", "enbrel": "etanercept", "remicade": "infliximab",
+    "cosentyx": "secukinumab", "stelara": "ustekinumab", "xolair": "omalizumab", "ilaris": "canakinumab",
+    "kesimpta": "ofatumumab", "gilenya": "fingolimod", "mayzent": "siponimod", "tecfidera": "dimethyl fumarate",
+    "tysabri": "natalizumab", "ocrevus": "ocrelizumab", "gleevec": "imatinib", "tasigna": "nilotinib",
+    "sprycel": "dasatinib", "jakafi": "ruxolitinib", "kisqali": "ribociclib", "ibrance": "palbociclib",
+    "femara": "letrozole", "arimidex": "anastrozole", "nolvadex": "tamoxifen", "zytiga": "abiraterone",
+    "xeloda": "capecitabine", "herceptin": "trastuzumab", "avastin": "bevacizumab", "rituxan": "rituximab",
+    "revlimid": "lenalidomide", "votrient": "pazopanib", "sutent": "sunitinib", "sandostatin": "octreotide",
+    "zometa": "zoledronic acid", "reclast": "zoledronic acid", "exjade": "deferasirox", "jadenu": "deferasirox",
+    "promacta": "eltrombopag", "fosamax": "alendronate", "evista": "raloxifene", "prolia": "denosumab",
+    "premarin": "estradiol", "provera": "medroxyprogesterone", "proscar": "finasteride", "flomax": "tamsulosin",
+    "viagra": "sildenafil", "cialis": "tadalafil", "ditropan": "oxybutynin", "vesicare": "solifenacin",
+    "zyloprim": "allopurinol", "uloric": "febuxostat", "colcrys": "colchicine", "tapazole": "methimazole",
+    "lucentis": "ranibizumab", "eylea": "aflibercept", "xalatan": "latanoprost",
+    "diovan hct": "valsartan", "lotrel": "amlodipine", "caduet": "amlodipine", "janumet": "sitagliptin",
+    "farxiga": "dapagliflozin", "invokana": "canagliflozin", "victoza": "liraglutide", "trulicity": "dulaglutide",
+    "humalog": "insulin lispro", "novolog": "insulin aspart", "tradjenta": "linagliptin", "actos": "pioglitazone",
+    "amaryl": "glimepiride", "glucotrol": "glipizide",
 }
 
 
@@ -93,6 +136,14 @@ def normalize_drug(name: str | None) -> str:
         close = difflib.get_close_matches(n, list(_labels()), n=1, cutoff=0.85)
         if close:
             return close[0]
+        # "tegre tol" -> "tegretol": the 3B model sometimes splits a brand name when it writes a tool argument
+        squashed = re.sub(r"[\s\-]+", "", n)
+        if squashed != n:
+            hit = SYNONYMS.get(squashed) or _brand_index().get(squashed)
+            if hit:
+                return hit
+            if squashed in _labels():
+                return squashed
     return n
 
 

@@ -14,8 +14,8 @@ from typing import TypedDict
 import ollama
 from langgraph.graph import END, START, StateGraph
 
-from src.agent.coverage import missing_subject
-from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS
+from src.agent.coverage import coverage, is_underspecified
+from src.agent.tools import TOOL_FUNCS, TOOL_SCHEMAS, implied_drugs
 from src.citations import has_citation, parse_citations, strip_invalid, strip_markers, uncited_sentences
 from src.config import AGENT_MAX_STEPS, LLM_MODEL, LLM_OPTIONS, OLLAMA_HOST
 from src.tracing import log_trace
@@ -130,6 +130,38 @@ def _add_citations(messages: list[dict], answer: str, n_sources: int) -> str:
     return rewritten
 
 
+_DANGLING_END = re.compile(r"\b(is|are|was|were|of|the|to|with|for|a|an|and)\s*[.:]?\s*$", re.I)
+
+
+_HOLE = re.compile(r"\b(is|are|was|were|of|to|with|for|by|at|as)\s*(\[\d+\]\s*)+[.:]", re.I)
+
+
+def is_degenerate(answer: str) -> bool:
+    """An answer with no usable content, e.g. "The usual starting dose of lisinopril for hypertension is [1]."
+    (the model wrote the citation but not the fact). Too few words once citation markers are removed, or a
+    sentence that stops on a dangling word."""
+    text = strip_markers(answer).strip()
+    if len(text.split()) < 6 or _DANGLING_END.search(text):
+        return True
+    # A hole in the middle: "...starting dose of lisinopril is [1]. However, the dose can be adjusted..." The
+    # fact was dropped but the answer carries on, so the whole-answer checks above pass. Look at each sentence.
+    return bool(_HOLE.search(answer))
+
+
+def _retry_degenerate(messages: list[dict], answer: str, n_sources: int) -> str:
+    """One retry that asks for the content the first answer left out."""
+    resp = _client.chat(
+        model=LLM_MODEL,
+        options=LLM_OPTIONS,
+        messages=messages[:-1] + [{"role": "user", "content": (
+            f"This answer is incomplete: {answer!r}. Answer the original question again in one to three full "
+            "sentences. State the specific facts (names, numbers, doses, warnings) that the numbered sources "
+            f"give, and end each sentence with its source number like [1]. Valid source numbers: 1 to {n_sources}. "
+            f"If the sources do not contain the answer, reply exactly: {NOT_FOUND}")}],
+    )
+    return resp["message"]["content"].strip()
+
+
 _SPECIAL_POPULATION = re.compile(
     r"pregnan|breast-?feed|lactat|nursing|infant|child|pediatric|elderly|older adult|renal|kidney|"
     r"hepatic|liver", re.I)
@@ -161,7 +193,20 @@ def run_agent(question: str) -> dict:
     global _graph
     _graph = _graph or build_graph()
     t_start = time.perf_counter()
-    missing = missing_subject(question)
+    missing, uncovered = coverage(question)
+    if is_underspecified(question, drugs_named=bool(implied_drugs(question))):
+        missing = []
+        result = {
+            "question": question, "cited": [], "invalid": [], "uncited": [], "sources": [], "answered": False,
+            "answer": f"{NOT_FOUND} The question does not name a drug. Ask about a specific drug, for example "
+                      "\"What are the side effects of metformin?\".",
+            "trace": [{"tool": "underspecified_check", "args": {}, "n_results": 0,
+                       "note": "no drug named; asked for one before retrieval", "ms": 0}],
+            "stats": {"total_ms": round((time.perf_counter() - t_start) * 1000), "llm_calls": 1, "llm_ms": 0,
+                      "tokens": 0, "steps": 0},
+        }
+        log_trace(result)
+        return result
     if missing:
         # The question is about a drug the index has no label or abstract for. Retrieval would return chunks
         # that merely mention it (lithium appears in other drugs' interaction sections), which would produce a
@@ -192,6 +237,15 @@ def run_agent(question: str) -> dict:
         if not has_citation(answer) or bad:        # missing or made-up citations: one repair pass
             answer = _add_citations(state["messages"], answer, n)
         answer = strip_invalid(answer, n)          # whatever made-up markers survive are removed
+        if is_degenerate(answer):                  # a citation with no fact in it: one retry, else say so
+            retry = strip_invalid(_retry_degenerate(state["messages"], answer, n), n)
+            answer = retry if retry and not is_degenerate(retry) else \
+                f"{NOT_FOUND} The model could not state an answer from the retrieved text."
+    if n and uncovered and NOT_FOUND.lower() not in answer.lower():
+        # "Can I take lithium with ibuprofen?": ibuprofen is indexed, lithium is not. The answer can only repeat
+        # what ibuprofen's label says about lithium; it must not read as if there were a lithium source.
+        answer = (f"Note: the indexed documents have no label or abstract for {', '.join(uncovered)}, so this "
+                  "answer is limited to what the other documents say about it.\n\n" + answer)
     if n and _PERSONAL_ADVICE.search(question) and NOT_FOUND.lower() not in answer.lower():
         # The 3B model sometimes still names a drug to take. A fixed notice makes the limit unmistakable.
         answer = ("I can't recommend what you personally should take; a clinician or pharmacist should decide. "

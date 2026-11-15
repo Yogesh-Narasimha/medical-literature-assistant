@@ -444,3 +444,109 @@ def test_implied_drugs_covers_brands_synonyms_and_classes(tools):
     assert tools.implied_drugs("Is Tylenol ok with a blood thinner?") >= {"acetaminophen", "warfarin"}
     assert tools.implied_drugs("symptoms of the flu") == set()
     assert tools.implied_drugs("warfarin and ibuprofen") == {"warfarin", "ibuprofen"}
+
+
+# ----------------------------------- gaps found by the adversarial set (partial coverage, empty answers, vague asks)
+def test_coverage_reports_uncovered_names_when_another_drug_is_covered(coverage, monkeypatch):
+    def with_names(names):
+        monkeypatch.setattr(coverage, "extract_drugs", lambda q: names)
+        return coverage.coverage("q")
+    assert with_names(["lithium"]) == (["lithium"], [])                  # nothing covered: refuse
+    assert with_names(["lithium", "ibuprofen"]) == ([], ["lithium"])     # answer, but warn about lithium
+    assert with_names(["warfarin", "ibuprofen"]) == ([], [])             # all covered: nothing to say
+    assert with_names([]) == ([], [])
+
+
+def test_underspecified_only_for_short_generic_questions(coverage):
+    assert coverage.is_underspecified("drug interactions", drugs_named=False)
+    assert coverage.is_underspecified("What are side effects?", drugs_named=False)
+    assert not coverage.is_underspecified("drug interactions", drugs_named=True)
+    assert not coverage.is_underspecified("serotonin syndrome", drugs_named=False)   # a real topic
+    assert not coverage.is_underspecified("What are the side effects of metformin?", drugs_named=False)
+
+
+def test_degenerate_answers_are_detected():
+    from src.agent import graph
+    assert graph.is_degenerate("The usual starting dose of lisinopril for hypertension is [1].")
+    assert graph.is_degenerate("Yes [1].")
+    assert not graph.is_degenerate("Warfarin carries a boxed warning for bleeding risk [1].")
+    assert not graph.is_degenerate("The usual starting dose is 10 mg once daily [1].")
+
+
+# ------------------------------------------------ brand names, and answers with a hole in them (adversarial set)
+@pytest.fixture(autouse=True)
+def _no_real_brands(monkeypatch):
+    """Keep tests independent of whatever labels are downloaded on this machine."""
+    from src.retrieval import hybrid
+    monkeypatch.setattr(hybrid, "_load_brands", lambda drugs: {})
+
+
+def test_brand_name_in_query_boosts_the_generic_drugs_chunks():
+    """'Zoloft side effects' names no generic drug; without the brand map nothing is boosted and a look-alike
+    name (zoledronic acid) can win."""
+    chunks = [chunk("a#s#0", "side effects dizziness", drug="zoledronic acid"),
+              chunk("b#s#0", "side effects dizziness", drug="sertraline")]
+    dense = FakeDense(chunks, [0.80, 0.79])
+    assert HybridRetriever(dense, drug_boost=0.01).search("Zoloft side effects", 2)[0].chunk["drug"] == "zoledronic acid"
+    with_brands = HybridRetriever(dense, drug_boost=0.01, brands={"zoloft": "sertraline"})
+    assert with_brands._query_drugs("Zoloft side effects") == {"sertraline"}
+    assert with_brands.search("Zoloft side effects", 2)[0].chunk["drug"] == "sertraline"
+
+
+def test_brands_come_only_from_single_ingredient_labels():
+    from src.data import fetch_openfda as f
+    labels = [
+        {"openfda": {"generic_name": ["SERTRALINE HYDROCHLORIDE"], "brand_name": ["Zoloft", "Sertraline"]}},
+        {"openfda": {"generic_name": ["SITAGLIPTIN AND METFORMIN HYDROCHLORIDE"], "brand_name": ["Janumet"]}},
+        {"openfda": {"generic_name": ["METFORMIN HYDROCHLORIDE"], "brand_name": ["Glucophage"]}},
+    ]
+    assert f.brands_of("sertraline", labels) == ["Sertraline", "Zoloft"]
+    assert f.brands_of("metformin", labels) == ["Glucophage"]          # Janumet is a combination: excluded
+    assert f._is_single_ingredient("sacubitril and valsartan", ["SACUBITRIL AND VALSARTAN"])
+    assert not f._is_single_ingredient("valsartan", ["VALSARTAN AND HYDROCHLOROTHIAZIDE"])
+
+
+def test_degenerate_detects_a_hole_in_the_middle_of_an_answer():
+    from src.agent import graph
+    assert graph.is_degenerate("The usual starting dose of lisinopril for hypertension is [1]. However, the dose "
+                               "can be adjusted based on clinical response and tolerability.")
+    assert not graph.is_degenerate("The usual starting dose is 10 mg once daily [1]. The dose can be adjusted "
+                                   "based on clinical response [1].")
+
+
+def test_brand_expansion_brings_the_generics_chunks_into_the_candidate_pool():
+    """The real failure: dense and BM25 never saw sertraline's chunks for 'Zoloft side effects', so the drug
+    boost had nothing to boost. The query must be expanded with the generic before searching."""
+    seen = []
+
+    class Recording(FakeDense):
+        def search(self, query, k):
+            seen.append(query)
+            return super().search(query, k)
+
+    chunks = [chunk("a#s#0", "side effects dizziness", drug="zoledronic acid"),
+              chunk("b#s#0", "side effects nausea", drug="sertraline")]
+    r = HybridRetriever(Recording(chunks, [0.80, 0.79]), brands={"zoloft": "sertraline"})
+    assert r.expand("Zoloft side effects") == "Zoloft side effects sertraline"
+    assert r.expand("sertraline side effects") == "sertraline side effects"      # generic already present
+    assert r.expand("side effects of ibuprofen") == "side effects of ibuprofen"  # no brand: untouched
+    r.search("Zoloft side effects", 2)
+    assert seen == ["Zoloft side effects sertraline"]
+    # BM25 sees the expanded query too: it finds the sertraline chunk through the generic's name
+    assert BM25Retriever(chunks).search("Zoloft side effects sertraline", 1)[0].chunk["drug"] == "sertraline"
+
+
+def test_misspelled_drug_names_are_recognised_but_ordinary_words_are_not():
+    chunks = [chunk(f"{d}#s#0", "text", drug=d) for d in ("metformin", "ibuprofen", "warfarin", "diazepam", "insulin")]
+    r = HybridRetriever(FakeDense(chunks, [0.5] * 5), brands={})
+    assert r._query_drugs("side effects of metformine") == {"metformin"}
+    assert r._query_drugs("Can I take ibuprofin with warfrin?") == {"ibuprofen", "warfarin"}
+    assert r.expand("side effects of metformine") == "side effects of metformine metformin"
+    for ordinary in ("pregnancy dosage interactions", "hypertension medication symptoms", "breastfeeding children elderly"):
+        assert r._query_drugs(ordinary) == set()
+
+
+def test_normalize_drug_rejoins_a_brand_name_the_model_split(tools):
+    assert tools.normalize_drug("coum adin") == "warfarin"       # 'coumadin' is a brand in the fixture
+    assert tools.normalize_drug("ibu-profen") == "ibuprofen"
+    assert tools.normalize_drug("no such drug") == "no such drug"

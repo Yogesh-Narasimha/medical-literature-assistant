@@ -7,6 +7,7 @@ scores: score(d) = sum over rankers of 1 / (RRF_K + rank_in_that_ranker).
 
 All retrievers expose search(query, k) -> list[Hit], like DenseRetriever.
 """
+import difflib
 import math
 import re
 from collections import Counter
@@ -16,6 +17,7 @@ from src.retrieval.dense import DenseRetriever, Hit
 
 RRF_K = 60
 DRUG_BOOST = 0.01   # chosen by the retrieval eval (eval/run_eval.py retrieval)
+FUZZY_CUTOFF = 0.87   # misspelled drug names; every common misspelling tried matched, no ordinary word did
 STOPWORDS = set("a an and are as at be by can for from how i in is it of on or the to what which with do does "
                 "take taken use used".split())
 _TOKEN = re.compile(r"[a-z0-9]+")
@@ -55,8 +57,36 @@ class BM25Retriever:
         return [Hit(s, self.chunks[i]) for s, i in scored[:k]]
 
 
+def _load_brands(drugs: set[str]) -> dict[str, str]:
+    """Brand names recorded with each downloaded label (data/raw/drug_labels.jsonl) -> its generic drug.
+    Skips short or ambiguous brands and any brand that equals a generic name of another indexed drug."""
+    import json
+
+    from src.config import RAW_DIR
+    path = RAW_DIR / "drug_labels.jsonl"
+    brands: dict[str, str] = {}
+    if not path.exists():
+        return brands
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            generic = rec["drug"].lower()
+            for b in rec.get("brand_names", []):
+                b = b.lower().strip()
+                if len(b) >= 4 and b not in drugs and generic in drugs:
+                    brands.setdefault(b, generic)
+    # Curated brand and lay names (Zoloft, Coumadin...) that the openFDA labels do not carry. Imported here, not
+    # at the top, because the agent package imports the retrieval package.
+    from src.agent.tools import SYNONYMS
+    for b, generic in SYNONYMS.items():
+        if len(b) >= 4 and b not in drugs and generic.lower() in drugs:
+            brands.setdefault(b, generic.lower())
+    return brands
+
+
 class HybridRetriever:
-    def __init__(self, dense: DenseRetriever | None = None, pool: int = 30, drug_boost: float = 0.0):
+    def __init__(self, dense: DenseRetriever | None = None, pool: int = 30, drug_boost: float = 0.0,
+                 brands: dict[str, str] | None = None):
         self.dense = dense or DenseRetriever()
         self.bm25 = BM25Retriever(self.dense.chunks)
         self.pool = pool   # how deep each ranker is read before fusing
@@ -64,12 +94,33 @@ class HybridRetriever:
         # 0.0 = plain RRF. A rank-1 hit in one ranker is worth 1/61 = 0.016, so 0.01 is a strong nudge.
         self.drug_boost = drug_boost
         self.drugs = sorted({c["drug"].lower() for c in self.dense.chunks if c.get("drug")})
+        # brand (lowercase) -> generic drug. Without it "Zoloft side effects" names no drug, gets no boost, and
+        # the rerankers drift to look-alike names (zoledronic acid).
+        self.brands = _load_brands(set(self.drugs)) if brands is None else brands
 
     def _query_drugs(self, query: str) -> set[str]:
         q = query.lower()
-        return {d for d in self.drugs if re.search(r"\b" + re.escape(d) + r"\b", q)}
+        named = {d for d in self.drugs if re.search(r"\b" + re.escape(d) + r"\b", q)}
+        named |= {g for b, g in self.brands.items() if re.search(r"\b" + re.escape(b) + r"\b", q)}
+        # Misspellings ("metformine", "ibuprofin", "warfrin"): a word of 6+ letters that is no drug but is very
+        # close to exactly one single-word drug name. Checked on ~45 ordinary medical words: no false matches.
+        singles = [d for d in self.drugs if " " not in d]
+        for tok in set(re.findall(r"[a-z]{6,}", q)):
+            if tok not in self.drugs and tok not in self.brands:
+                close = difflib.get_close_matches(tok, singles, n=1, cutoff=FUZZY_CUTOFF)
+                named.update(close)
+        return named
+
+    def expand(self, query: str) -> str:
+        """Add the generic name of any brand named in the query ("Zoloft side effects" -> "... sertraline").
+        The drug boost only reorders candidates that were already found, and no chunk contains the word
+        "Zoloft", so without this the drug's own chunks never enter the candidate pool at all."""
+        q = query.lower()
+        extra = sorted(g for g in self._query_drugs(query) if not re.search(r"\b" + re.escape(g) + r"\b", q))
+        return f"{query} {' '.join(extra)}" if extra else query
 
     def search(self, query: str, k: int = TOP_K) -> list[Hit]:
+        query = self.expand(query)
         dense_hits = self.dense.search(query, self.pool)
         fused: dict[tuple, float] = {}
         by_id: dict[tuple, Hit] = {}
